@@ -46,10 +46,13 @@
     <span class="footer-separator">·</span>
     <a href="https://github.com/avocodetoast/statistikkportalen" target="_blank" rel="noopener noreferrer">GitHub</a>
     <span class="footer-separator">·</span>
-    <a href="#" id="clear-cache-link" title="Tøm hurtigbuffer og last inn data på nytt fra SSB">Tøm hurtigbuffer</a></p>
+    <a href="#" id="clear-cache-link" title="Tøm hurtigbuffer og last inn data på nytt fra SSB">Tøm hurtigbuffer</a>
+    <span class="footer-separator">·</span>
+    <span id="app-version"></span></p>
   </footer>
 
   <!-- JavaScript - Load in correct order -->
+  <script src="js/version.js"></script>
   <script src="js/config.js"></script>
   <script src="js/cache.js"></script>
   <script src="js/api.js"></script>
@@ -77,6 +80,7 @@
   <script>
     // Initialize app when DOM is ready
     document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('app-version').textContent = VERSION;
       logger.log('[App] Initializing Statistikkportalen');
       logger.log('[App] API Base URL:', api.baseUrl);
 
