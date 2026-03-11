@@ -23,15 +23,120 @@ function setupVariableEvents() {
   setupCodelistDropdowns();
 }
 
+// Module-level drag state for paint-selection
+let _dragState = null;   // { dimCode, container, card, startIndex, mode, hasMoved, preSnapshot }
+let _dragOccurred = false; // suppresses click handler after a completed drag
+
+// "Committed" selections: items added by plain click or Ctrl/Cmd-click (not the current shift range).
+// Displayed selection = committedSelection ∪ current shift range.
+// This matches OS-standard list behavior (macOS Finder, Windows Explorer).
+const _committedSelection = {}; // dimCode → Set<number>
+
+// Clear drag state on mouseup; commit drag result so shift-click after drag works correctly
+document.addEventListener('mouseup', () => {
+  if (_dragState && _dragState.hasMoved) {
+    const { container, dimCode } = _dragState;
+    const allItems = Array.from(container.querySelectorAll('.value-list-item'));
+    _committedSelection[dimCode] = new Set(
+      allItems.filter(it => it.classList.contains('selected'))
+              .map(it => parseInt(it.dataset.index, 10))
+    );
+  }
+  _dragState = null;
+});
+
 /**
- * Set up click events on value list items (shift-click, ctrl-click, plain click)
+ * Set up click events on value list items (shift-click, ctrl-click, plain click, drag)
  */
 function setupListSelectionEvents() {
+  // Reset committed-selection state for the freshly rendered variable list
+  Object.keys(_committedSelection).forEach(k => delete _committedSelection[k]);
+
   document.querySelectorAll('.value-list-container').forEach(container => {
     const card = container.closest('.variable-card');
     const dimCode = card.dataset.dimension;
 
+    // Prevent text selection and set up drag state
+    container.addEventListener('mousedown', (e) => {
+      const item = e.target.closest('.value-list-item');
+
+      // Prevent Safari from text-selecting list content on any interaction with an item
+      if (item && item.style.display !== 'none') e.preventDefault();
+
+      // Shift drag/click: anchor-based range selection handled entirely by the click event
+      if (e.shiftKey) return;
+
+      if (!item || item.style.display === 'none') return;
+
+      const isAdditive = e.ctrlKey || e.metaKey;
+      const allItems = Array.from(container.querySelectorAll('.value-list-item'));
+      const clickedIndex = parseInt(item.dataset.index, 10);
+
+      _dragState = {
+        dimCode, container, card,
+        startIndex: clickedIndex,
+        mode: item.classList.contains('selected') ? 'deselect' : 'select',
+        hasMoved: false,
+        // Additive drag (ctrl/cmd): preserve existing selection outside the range.
+        // Plain drag: empty snapshot so items outside the range are always cleared.
+        preSnapshot: isAdditive
+          ? new Set(allItems.filter(it => it.classList.contains('selected'))
+                            .map(it => parseInt(it.dataset.index, 10)))
+          : new Set()
+      };
+      _dragOccurred = false;
+    });
+
+    // Paint selection while holding the mouse button and moving over items
+    container.addEventListener('mouseover', (e) => {
+      if (!(e.buttons & 1)) return; // left button not held
+      if (!_dragState || _dragState.container !== container) return;
+
+      const item = e.target.closest('.value-list-item');
+      if (!item || item.style.display === 'none') return;
+
+      const currentIndex = parseInt(item.dataset.index, 10);
+      // Ignore the very first hover over the start item (that's handled by click)
+      if (currentIndex === _dragState.startIndex && !_dragState.hasMoved) return;
+
+      _dragState.hasMoved = true;
+      _dragOccurred = true;
+
+      if (container.dataset.mode !== 'specific') {
+        container.dataset.mode = 'specific';
+        updateModeVisuals(card);
+      }
+
+      const allItems = Array.from(container.querySelectorAll('.value-list-item'));
+      const start = Math.min(_dragState.startIndex, currentIndex);
+      const end = Math.max(_dragState.startIndex, currentIndex);
+
+      allItems.forEach(it => {
+        if (it.style.display === 'none') return;
+        const idx = parseInt(it.dataset.index, 10);
+        const inRange = idx >= start && idx <= end;
+        const wasSelected = _dragState.preSnapshot.has(idx);
+        if (inRange) {
+          if (_dragState.mode === 'select') it.classList.add('selected');
+          else it.classList.remove('selected');
+        } else {
+          // Outside range: restore to pre-drag state so range dynamically adjusts
+          if (wasSelected) it.classList.add('selected');
+          else it.classList.remove('selected');
+        }
+      });
+
+      // Update anchor so a subsequent shift-click extends from the drag endpoint
+      lastClickedIndex[dimCode] = currentIndex;
+      updateValueCounter(card);
+      updateSelectionStatus();
+    });
+
+    // Click handler: shift-click range, ctrl-click toggle, plain click single-select
     container.addEventListener('click', (e) => {
+      // If a drag just happened, the selection is already applied — skip click logic
+      if (_dragOccurred) { _dragOccurred = false; return; }
+
       const item = e.target.closest('.value-list-item');
       if (!item) return;
 
@@ -44,32 +149,56 @@ function setupListSelectionEvents() {
       const clickedIndex = parseInt(item.dataset.index, 10);
       const allItems = Array.from(container.querySelectorAll('.value-list-item'));
 
-      if (e.shiftKey && lastClickedIndex[dimCode] !== undefined) {
-        // Shift-click: select range between last click and current click
+      if (!_committedSelection[dimCode]) _committedSelection[dimCode] = new Set();
+      const committed = _committedSelection[dimCode];
+
+      if (e.shiftKey && lastClickedIndex[dimCode] !== undefined && (e.ctrlKey || e.metaKey)) {
+        // Shift+Ctrl: add range to committed selection (fully additive, anchor advances)
         const start = Math.min(lastClickedIndex[dimCode], clickedIndex);
-        const end = Math.max(lastClickedIndex[dimCode], clickedIndex);
-
-        if (!e.ctrlKey && !e.metaKey) {
-          // Without Ctrl: replace selection with range
-          allItems.forEach(it => it.classList.remove('selected'));
-        }
-
+        const end   = Math.max(lastClickedIndex[dimCode], clickedIndex);
         allItems.forEach(it => {
           const idx = parseInt(it.dataset.index, 10);
           if (idx >= start && idx <= end) {
             it.classList.add('selected');
+            committed.add(idx);
           }
         });
+        lastClickedIndex[dimCode] = clickedIndex;
+      } else if (e.shiftKey && lastClickedIndex[dimCode] !== undefined) {
+        // Shift-click (no Ctrl): replace shift range but preserve committed items
+        const start = Math.min(lastClickedIndex[dimCode], clickedIndex);
+        const end   = Math.max(lastClickedIndex[dimCode], clickedIndex);
+        allItems.forEach(it => {
+          const idx = parseInt(it.dataset.index, 10);
+          if ((idx >= start && idx <= end) || committed.has(idx))
+            it.classList.add('selected');
+          else
+            it.classList.remove('selected');
+        });
+        // anchor and committed stay unchanged
       } else if (e.ctrlKey || e.metaKey) {
-        // Ctrl/Cmd-click: toggle individual item
-        item.classList.toggle('selected');
+        // Ctrl/Cmd-click: commit current display (incl. any active shift range), then toggle
+        const current = new Set(
+          allItems.filter(it => it.classList.contains('selected'))
+                  .map(it => parseInt(it.dataset.index, 10))
+        );
+        if (current.has(clickedIndex)) current.delete(clickedIndex);
+        else current.add(clickedIndex);
+        _committedSelection[dimCode] = current;
+        lastClickedIndex[dimCode] = clickedIndex;
+        allItems.forEach(it => {
+          const idx = parseInt(it.dataset.index, 10);
+          if (current.has(idx)) it.classList.add('selected');
+          else it.classList.remove('selected');
+        });
       } else {
-        // Plain click: select only this item
+        // Plain click: reset everything, select only this item
+        _committedSelection[dimCode] = new Set([clickedIndex]);
+        lastClickedIndex[dimCode] = clickedIndex;
         allItems.forEach(it => it.classList.remove('selected'));
         item.classList.add('selected');
       }
 
-      lastClickedIndex[dimCode] = clickedIndex;
       updateValueCounter(card);
       updateSelectionStatus();
     });
