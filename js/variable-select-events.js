@@ -26,11 +26,18 @@ function setupVariableEvents() {
 // Module-level drag state for paint-selection
 let _dragState = null;   // { dimCode, container, card, startIndex, mode, hasMoved, preSnapshot }
 let _dragOccurred = false; // suppresses click handler after a completed drag
+let _activeCard = null;  // last .variable-card the user interacted with
 
 // "Committed" selections: items added by plain click or Ctrl/Cmd-click (not the current shift range).
 // Displayed selection = committedSelection ∪ current shift range.
 // This matches OS-standard list behavior (macOS Finder, Windows Explorer).
 const _committedSelection = {}; // dimCode → Set<number>
+
+// Track the last variable card the user interacted with (for Ctrl+A scope)
+document.addEventListener('mousedown', (e) => {
+  const card = e.target.closest('.variable-card');
+  if (card) _activeCard = card;
+});
 
 // Clear drag state on mouseup; commit drag result so shift-click after drag works correctly
 document.addEventListener('mouseup', () => {
@@ -58,6 +65,7 @@ function setupListSelectionEvents() {
 
     // Prevent text selection and set up drag state
     container.addEventListener('mousedown', (e) => {
+      _activeCard = card;
       const item = e.target.closest('.value-list-item');
 
       // Prevent Safari from text-selecting list content on any interaction with an item
@@ -234,15 +242,24 @@ function setupValueFilters() {
 }
 
 /**
- * Set up Ctrl+A keyboard shortcut to select all visible values in a focused value list.
- * The value-list-container has tabindex="0" so it can receive focus.
+ * Set up Ctrl+A keyboard shortcut to select all visible values in the active variable card.
+ * Triggers when focus is inside a value list, or when the user has clicked anywhere in a card.
+ * The value-list-container has tabindex="0" so it can also receive keyboard focus directly.
  */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-      // Check if focus is inside a value list container
-      const container = document.activeElement?.closest('.value-list-container');
-      if (!container) return; // Not inside a value list — let browser handle normally
+      // Don't override when the user is typing in a text input
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) return;
+
+      // Use focused value-list if available, otherwise fall back to last clicked card
+      const container =
+        activeEl?.closest('.value-list-container') ??
+        _activeCard?.querySelector('.value-list-container');
+      if (!container) return;
+      // Only act when within the variable-select view
+      if (!container.closest('#variables-container')) return;
 
       e.preventDefault();
 
