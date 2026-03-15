@@ -193,6 +193,7 @@
 /* ========== Large Numbers ========== */
 
 .data-table .data-cell {
+  text-align: right;
   font-feature-settings: "tnum"; /* Tabular numbers */
   letter-spacing: 0.02em;
 }
@@ -352,6 +353,11 @@
 .data-cell.highlighted {
   background: #fff3cd !important;
   font-weight: 600;
+}
+
+/* Suppressed / prikket values (confidential, not available, etc.) */
+.data-cell.suppressed-value {
+  color: var(--color-text-light);
 }
 
 /* ========== Table Metadata Display ========== */

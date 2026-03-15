@@ -96,6 +96,10 @@ async function loadTableData() {
 
   if (!data || !data.value) {
     logger.error('[TableDisplay] Invalid data format:', data);
+    const container = document.getElementById('data-container');
+    if (container) {
+      container.innerHTML = '<p class="error-message">Kunne ikke hente data fra API. Prøv igjen eller endre variabelvalget.</p>';
+    }
     return;
   }
 
@@ -159,10 +163,10 @@ async function loadTableData() {
 function determineDefaultLayout(data) {
   const dimensions = data.id;
 
-  // Default: put time dimension as columns if present, otherwise last dimension
-  const timeDimIndex = dimensions.findIndex(d =>
-    d === 'Tid' || d.toLowerCase().includes('tid')
-  );
+  // Use the JSON-stat2 role.time field to identify the time dimension — API-agnostic,
+  // works regardless of what the dimension code is named in any language or instance.
+  const timeDimCode = data.role?.time?.[0];
+  const timeDimIndex = timeDimCode != null ? dimensions.indexOf(timeDimCode) : -1;
 
   if (timeDimIndex !== -1) {
     // Time dimension as rows (one row per period)
@@ -296,6 +300,12 @@ function buildHtmlTable() {
   const rowHeaders = buildDimensionCombinations(rowDims, data);
   const colHeaders = buildDimensionCombinations(colDims, data);
 
+  // Precompute metric dimension lookup for decimal formatting (constant across all cells)
+  const metricDim = data.role?.metric?.[0];
+  const metricRowIdx = metricDim != null ? layout.rows.indexOf(metricDim) : -1;
+  const metricColIdx = metricDim != null ? layout.columns.indexOf(metricDim) : -1;
+  const tableDefaultDecimals = data.extension?.px?.decimals ?? null;
+
   logger.log('[TableDisplay] Row headers:', rowHeaders.length);
   logger.log('[TableDisplay] Column headers:', colHeaders.length);
 
@@ -310,8 +320,8 @@ function buildHtmlTable() {
     colDims.forEach((dimCode, dimIndex) => {
       html += '<tr>';
 
-      // Empty cells for row headers
-      if (dimIndex === 0) {
+      // Corner cell spanning all row-header columns (omit if there are no row dims)
+      if (dimIndex === 0 && rowDims.length > 0) {
         html += '<th colspan="' + rowDims.length + '" rowspan="' + colDims.length + '"' +
                 ' class="corner-cell">&nbsp;</th>';
       }
@@ -367,9 +377,19 @@ function buildHtmlTable() {
 
     // Data cells
     colHeaders.forEach(colHeader => {
-      const value = getDataValue(rowHeader, colHeader);
-      const formatted = formatNumber(value);
-      html += '<td class="data-cell">' + formatted + '</td>';
+      const status = getDataStatus(rowHeader, colHeader);
+      if (status) {
+        html += '<td class="data-cell suppressed-value" title="' + escapeHtml(suppressedLabel(status)) + '">' + escapeHtml(status) + '</td>';
+      } else {
+        const value = getDataValue(rowHeader, colHeader);
+        const metricCode = metricRowIdx !== -1 ? rowHeader.codes[metricRowIdx]
+                         : metricColIdx !== -1 ? colHeader.codes[metricColIdx]
+                         : undefined;
+        const decimals = metricCode !== undefined
+          ? (data.dimension[metricDim]?.category?.unit?.[metricCode]?.decimals ?? tableDefaultDecimals)
+          : tableDefaultDecimals;
+        html += '<td class="data-cell">' + formatNumber(value, decimals) + '</td>';
+      }
     });
 
     html += '</tr>';
@@ -453,6 +473,49 @@ function getDataValue(rowHeader, colHeader) {
   const flatIndex = calculateFlatIndex(fullIndices, data.size);
 
   return data.value[flatIndex];
+}
+
+/**
+ * Get suppressed-value status code for a cell (JSON-stat2 `status` field)
+ * @param {object} rowHeader - Row header combination
+ * @param {object} colHeader - Column header combination
+ * @returns {string|null} - Status symbol (e.g. ".", ":", "..") or null
+ */
+function getDataStatus(rowHeader, colHeader) {
+  if (!currentData || !currentData.status) return null;
+
+  const layout = AppState.tableLayout;
+  const data = currentData;
+
+  const fullIndices = [];
+  data.id.forEach(dimCode => {
+    const rowIndex = layout.rows.indexOf(dimCode);
+    const colIndex = layout.columns.indexOf(dimCode);
+    if (rowIndex !== -1) {
+      fullIndices.push(rowHeader.indices[rowIndex]);
+    } else if (colIndex !== -1) {
+      fullIndices.push(colHeader.indices[colIndex]);
+    } else {
+      fullIndices.push(0);
+    }
+  });
+
+  const flatIndex = calculateFlatIndex(fullIndices, data.size);
+  return data.status[String(flatIndex)] ?? null;
+}
+
+/**
+ * Return a Norwegian label for a JSON-stat2 suppressed-value status code
+ * @param {string} code - Status code
+ * @returns {string}
+ */
+function suppressedLabel(code) {
+  switch (code) {
+    case '.':  return 'Ikke tilgjengelig';
+    case ':':  return 'Konfidensielt';
+    case '..': return 'Ikke aktuelt';
+    default:   return code;
+  }
 }
 
 /**
