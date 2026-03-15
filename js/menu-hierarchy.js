@@ -10,7 +10,7 @@ class MenuHierarchy {
       'arbeid': {
         id: 'arbeid',
         label: 'Arbeid, lønn og utdanning',
-        subjects: ['al', 'if', 'du']
+        subjects: ['al', 'if', 'ud']
       },
       'befolkning': {
         id: 'befolkning',
