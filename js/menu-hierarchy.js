@@ -43,7 +43,7 @@ class MenuHierarchy {
     this.subjectNames = {
       'al': 'Arbeid og lønn',
       'if': 'Inntekt og forbruk',
-      'du': 'Utdanning',
+      'ud': 'Utdanning',
       'be': 'Befolkning',
       'bb': 'Bygg, bolig og eiendom',
       'in': 'Innvandring og innvandrere',
