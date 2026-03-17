@@ -281,11 +281,13 @@ function updateSelectionCellCount() {
   const maxFormatted = maxCells.toLocaleString('nb-NO');
   cellCountEl.textContent = tpl('status.cellsSelected', formatted, t('unit.cell.many'), maxFormatted);
 
-  // Warn if approaching API limit (800,000 cells)
-  if (selectedCells > 800000) {
+  // Warn if approaching API cell limit
+  const apiMaxCells = AppConfig.limits.maxCells;
+  const apiWarningThreshold = AppConfig.limits.cellWarningThreshold;
+  if (selectedCells > apiMaxCells) {
     cellCountEl.style.color = 'var(--color-error)';
     cellCountEl.textContent += ' ' + t('status.exceedsLimit');
-  } else if (selectedCells > 600000) {
+  } else if (selectedCells > apiWarningThreshold) {
     cellCountEl.style.color = '#e65100';
   } else {
     cellCountEl.style.color = '';
