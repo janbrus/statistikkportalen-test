@@ -72,14 +72,19 @@ const AppConfig = {
    * API request limits
    */
   limits: {
-    // Maximum cells per request (SSB API limit)
+    // Maximum cells per request. Overridden at runtime by config.maxDataCells from the /config endpoint.
     maxCells: 800000,
 
-    // Warning threshold (cells)
+    // Warning threshold (cells). Overridden at runtime to 75% of config.maxDataCells from the /config endpoint.
     cellWarningThreshold: 600000,
 
-    // Maximum tables to fetch in one request
-    maxTablePageSize: 10000,
+    // Supported export formats. Null until populated at runtime from config.dataFormats via the /config endpoint.
+    dataFormats: null,
+
+    // Requested page size per /tables batch request. Large to minimise API
+    // round-trips; pagination handles the case where the API returns fewer
+    // rows than requested. Not an API-imposed limit.
+    tablePageBatchSize: 10000,
 
     // Maximum GET URL length before warning (SSB recommends < 2000 chars)
     maxGetUrlLength: 2000

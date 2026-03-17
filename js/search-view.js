@@ -226,7 +226,7 @@ async function _searchPerformSearch() {
 
       if (enhanced) {
         const serverQuery = SearchEnhanced.getServerQuery(query);
-        const response = await api.getTables({ query: serverQuery, lang: getCurrentApiLang(), pageSize: 10000, includeDiscontinued: true });
+        const response = await api.getAllTables({ query: serverQuery, lang: getCurrentApiLang(), includeDiscontinued: true });
 
         // Abort if a newer search has started
         if (myToken !== _searchToken) return;
@@ -237,7 +237,7 @@ async function _searchPerformSearch() {
       // Fuzzy fallback: 0 results from client + server → retry with ~1 Lucene fuzzy query
       if (clientResults.length === 0 && serverExtras.length === 0) {
         const fuzzyQuery = SearchEnhanced.buildFuzzyQuery(query);
-        const fuzzyResponse = await api.getTables({ query: fuzzyQuery, lang: getCurrentApiLang(), pageSize: 10000, includeDiscontinued: true });
+        const fuzzyResponse = await api.getAllTables({ query: fuzzyQuery, lang: getCurrentApiLang(), includeDiscontinued: true });
         if (myToken !== _searchToken) return;
         const filteredFuzzy = BrowserState._filterNonQuery(_extractExtras(fuzzyResponse), BrowserState.searchFilters);
         if (filteredFuzzy.length > 0) {

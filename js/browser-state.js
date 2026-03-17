@@ -60,15 +60,14 @@ const BrowserState = {
     try {
       logger.log('[BrowserState] Fetching all tables (including discontinued)...');
 
-      // Fetch API config and full table list in parallel
-      const [response] = await Promise.all([
-        api.getTables({
-          lang: getCurrentApiLang(),
-          pageSize: 10000,
-          includeDiscontinued: true
-        }),
-        api.getConfig()
-      ]);
+      // Fetch API config first to apply server limits before any data requests
+      await api.getConfig();
+
+      // Fetch all tables (with automatic pagination if needed)
+      const response = await api.getAllTables({
+        lang: getCurrentApiLang(),
+        includeDiscontinued: true
+      });
 
       this.allTables = response.tables;
       logger.log(`[BrowserState] Loaded ${this.allTables.length} tables`);

@@ -63,6 +63,68 @@ class SSBApi {
   }
 
   /**
+   * Fetch all tables across all pages and return a merged result.
+   * Uses the same cache key as getTables() so cached results are shared.
+   *
+   * @param {object} options - Same options as getTables() (query, lang, includeDiscontinued, pastDays, useCache)
+   * @returns {Promise<object>} - { tables: [...all tables] }
+   */
+  async getAllTables(options = {}) {
+    const {
+      query = '',
+      includeDiscontinued = true,
+      lang = null,
+      pastDays = null,
+      useCache = true
+    } = options;
+    const resolvedLang = lang || (typeof getCurrentApiLang === 'function' ? getCurrentApiLang() : 'no');
+    const pageSize = AppConfig.limits.tablePageBatchSize || 10000;
+
+    // Check cache first (same key as getTables would use for a full list)
+    const cacheKey = 'tables_' + resolvedLang + '_' + includeDiscontinued + '_' + pageSize +
+                     (query ? '_q_' + query : '') +
+                     (pastDays ? '_pd_' + pastDays : '');
+    if (useCache) {
+      const cached = await this.cache.get(cacheKey);
+      if (cached) {
+        logger.log('[API] Using cached table list (' + (cached.tables ? cached.tables.length : 0) + ' tables)');
+        return cached;
+      }
+    }
+
+    // Fetch first page
+    const firstPage = await this.getTables({ query, includeDiscontinued, lang: resolvedLang, pageSize, pastDays, useCache: false });
+    const allTables = firstPage.tables ? [...firstPage.tables] : [];
+    const totalPages = firstPage.page ? firstPage.page.totalPages : 1;
+
+    logger.log('[API] Tables: page 1/' + totalPages + ', got ' + allTables.length + ' tables');
+
+    // Fetch remaining pages if needed
+    if (totalPages > 1) {
+      for (let pageNumber = 2; pageNumber <= totalPages; pageNumber++) {
+        try {
+          const pageResult = await this.getTables({
+            query, includeDiscontinued, lang: resolvedLang, pageSize, pastDays, useCache: false,
+            pageNumber
+          });
+          const batch = pageResult.tables || [];
+          allTables.push(...batch);
+          logger.log('[API] Tables: page ' + pageNumber + '/' + totalPages + ', got ' + batch.length + ' tables (total so far: ' + allTables.length + ')');
+        } catch (error) {
+          logger.error('[API] Pagination failed at page ' + pageNumber + '/' + totalPages +
+                       ' (' + allTables.length + ' tables fetched before failure)');
+          throw error;
+        }
+      }
+    }
+
+    const result = { tables: allTables };
+    await this.cache.set(cacheKey, result, AppConfig.cache.tableListTTL);
+    logger.log('[API] Fetched all ' + allTables.length + ' tables across ' + totalPages + ' page(s)');
+    return result;
+  }
+
+  /**
    * Get list of tables with optional search/filtering.
    * Results are cached for 24 hours (tableListTTL).
    *
@@ -70,24 +132,30 @@ class SSBApi {
    * @param {string} options.query - Search query (searches titles, variables, values)
    * @param {boolean} options.includeDiscontinued - Include discontinued tables (default: true)
    * @param {string} options.lang - Language code (default: 'no')
-   * @param {number} options.pageSize - Page size (default: 10000)
+   * @param {number} options.pageSize - Page size (default: tablePageBatchSize)
+   * @param {number} options.pageNumber - Page number to fetch (default: 1)
    * @param {number} options.pastDays - Only include tables updated within this many days
    * @param {boolean} options.useCache - Whether to use cached data (default: true)
-   * @returns {Promise<object>} - Table list response
+   * @returns {Promise<object>} - Table list response (single page)
    */
   async getTables(options = {}) {
     const {
       query = '',
       includeDiscontinued = true,
       lang = null,
-      pageSize = 10000,
+      pageSize = AppConfig.limits.tablePageBatchSize || 10000,
+      pageNumber = 1,
       pastDays = null,
       useCache = true
     } = options;
     const resolvedLang = lang || (typeof getCurrentApiLang === 'function' ? getCurrentApiLang() : 'no');
 
-    // Build cache key from all parameters that affect the result
+    // Build cache key from all parameters that affect the result.
+    // pageNumber is included so that page-level entries don't collide;
+    // getAllTables() bypasses per-page caching (useCache: false) and caches
+    // only the final merged result under the page-1 key.
     const cacheKey = 'tables_' + resolvedLang + '_' + includeDiscontinued + '_' + pageSize +
+                     (pageNumber > 1 ? '_p_' + pageNumber : '') +
                      (query ? '_q_' + query : '') +
                      (pastDays ? '_pd_' + pastDays : '');
 
@@ -115,6 +183,11 @@ class SSBApi {
       // Filter by recent updates
       if (pastDays) {
         params.append('pastDays', pastDays.toString());
+      }
+
+      // Page number (1-indexed; omit for page 1 to keep URLs clean)
+      if (pageNumber > 1) {
+        params.append('pageNumber', pageNumber.toString());
       }
 
       const url = this.baseUrl + '/tables?' + params.toString();
@@ -496,13 +569,21 @@ class SSBApi {
   }
 
   /**
-   * Apply server config values to AppConfig.limits.
+   * Apply server config values to AppConfig.
    * @param {object} config - Config response from /config endpoint
    */
   _applyConfig(config) {
     if (config.maxDataCells != null) {
       AppConfig.limits.maxCells = config.maxDataCells;
       AppConfig.limits.cellWarningThreshold = Math.round(config.maxDataCells * 0.75);
+    }
+    // Stored for diagnostics and future use (e.g. version display in footer)
+    if (config.apiVersion != null) {
+      AppConfig.apiVersion = config.apiVersion;
+    }
+    // Stored for future use (e.g. export format validation / dynamic format picker)
+    if (Array.isArray(config.dataFormats)) {
+      AppConfig.limits.dataFormats = config.dataFormats;
     }
   }
 
