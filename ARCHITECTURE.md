@@ -168,7 +168,7 @@ setupApiBuilder()
   → updateApiPreview()           // Called on every selection change
      → buildGetUrl()             // Constructs GET URL with valueCodes[Dim]=... params
         → Time dimension optimisation:
-           1 period   → explicit code
+           1 period   → top(1)
            2 periods  → top(2)
            >2 periods → from(firstPeriod)   // forward-looking: always fetches from fixed start
         → codelist[Dim]=id appended for agg_ codelists
