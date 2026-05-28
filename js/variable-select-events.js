@@ -135,7 +135,7 @@ function setupListSelectionEvents() {
       });
 
       // Update anchor so a subsequent shift-click extends from the drag endpoint
-      lastClickedIndex[dimCode] = currentIndex;
+      VarSelect.lastClickedIndex[dimCode] = currentIndex;
       updateValueCounter(card);
       updateSelectionStatus();
     });
@@ -160,10 +160,10 @@ function setupListSelectionEvents() {
       if (!_committedSelection[dimCode]) _committedSelection[dimCode] = new Set();
       const committed = _committedSelection[dimCode];
 
-      if (e.shiftKey && lastClickedIndex[dimCode] !== undefined && (e.ctrlKey || e.metaKey)) {
+      if (e.shiftKey && VarSelect.lastClickedIndex[dimCode] !== undefined && (e.ctrlKey || e.metaKey)) {
         // Shift+Ctrl: add range to committed selection (fully additive, anchor advances)
-        const start = Math.min(lastClickedIndex[dimCode], clickedIndex);
-        const end   = Math.max(lastClickedIndex[dimCode], clickedIndex);
+        const start = Math.min(VarSelect.lastClickedIndex[dimCode], clickedIndex);
+        const end   = Math.max(VarSelect.lastClickedIndex[dimCode], clickedIndex);
         allItems.forEach(it => {
           const idx = parseInt(it.dataset.index, 10);
           if (idx >= start && idx <= end) {
@@ -171,11 +171,11 @@ function setupListSelectionEvents() {
             committed.add(idx);
           }
         });
-        lastClickedIndex[dimCode] = clickedIndex;
-      } else if (e.shiftKey && lastClickedIndex[dimCode] !== undefined) {
+        VarSelect.lastClickedIndex[dimCode] = clickedIndex;
+      } else if (e.shiftKey && VarSelect.lastClickedIndex[dimCode] !== undefined) {
         // Shift-click (no Ctrl): replace shift range but preserve committed items
-        const start = Math.min(lastClickedIndex[dimCode], clickedIndex);
-        const end   = Math.max(lastClickedIndex[dimCode], clickedIndex);
+        const start = Math.min(VarSelect.lastClickedIndex[dimCode], clickedIndex);
+        const end   = Math.max(VarSelect.lastClickedIndex[dimCode], clickedIndex);
         allItems.forEach(it => {
           const idx = parseInt(it.dataset.index, 10);
           if ((idx >= start && idx <= end) || committed.has(idx))
@@ -193,7 +193,7 @@ function setupListSelectionEvents() {
         if (current.has(clickedIndex)) current.delete(clickedIndex);
         else current.add(clickedIndex);
         _committedSelection[dimCode] = current;
-        lastClickedIndex[dimCode] = clickedIndex;
+        VarSelect.lastClickedIndex[dimCode] = clickedIndex;
         allItems.forEach(it => {
           const idx = parseInt(it.dataset.index, 10);
           if (current.has(idx)) it.classList.add('selected');
@@ -202,7 +202,7 @@ function setupListSelectionEvents() {
       } else {
         // Plain click: reset everything, select only this item
         _committedSelection[dimCode] = new Set([clickedIndex]);
-        lastClickedIndex[dimCode] = clickedIndex;
+        VarSelect.lastClickedIndex[dimCode] = clickedIndex;
         allItems.forEach(it => it.classList.remove('selected'));
         item.classList.add('selected');
       }

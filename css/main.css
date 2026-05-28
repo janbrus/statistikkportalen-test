@@ -162,7 +162,7 @@ header {
 main {
   flex: 1;
   padding: var(--spacing-xl);
-  max-width: 1400px;
+  max-width: 1700px;
   width: 100%;
   margin: 0 auto;
 }

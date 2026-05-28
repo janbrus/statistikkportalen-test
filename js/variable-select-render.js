@@ -18,7 +18,7 @@
  * For table 13760: heading=["ContentsCode","Tid"], stub=["Kjonn","Alder","Justering"]
  *   → display order: ContentsCode, Tid, Kjonn, Alder, Justering
  *
- * Falls back to tableMetadata.id if heading/stub are not available.
+ * Falls back to VarSelect.tableMetadata.id if heading/stub are not available.
  *
  * @returns {string[]} - Ordered array of dimension codes
  */
@@ -34,12 +34,12 @@ function _sampleTimeFormat(dimension) {
 }
 
 function getDimensionDisplayOrder() {
-  const heading = tableMetadata.extension?.px?.heading || [];
-  const stub = tableMetadata.extension?.px?.stub || [];
+  const heading = VarSelect.tableMetadata.extension?.px?.heading || [];
+  const stub = VarSelect.tableMetadata.extension?.px?.stub || [];
   const ordered = [...heading, ...stub];
 
   // Fallback: add any dimensions from metadata.id not covered by heading+stub
-  const remaining = tableMetadata.id.filter(d => !ordered.includes(d));
+  const remaining = VarSelect.tableMetadata.id.filter(d => !ordered.includes(d));
   return [...ordered, ...remaining];
 }
 
@@ -49,7 +49,7 @@ function getDimensionDisplayOrder() {
  * Dimensions are ordered per SSB convention: heading dimensions first, then stub.
  */
 async function displayVariables() {
-  if (!tableMetadata) return;
+  if (!VarSelect.tableMetadata) return;
 
   const container = document.getElementById('variables-container');
   if (!container) return;
@@ -65,19 +65,19 @@ async function displayVariables() {
   // Role lookup from metadata: role.time/geo/metric → which dimensions play these roles.
   // Used to label variable cards with semantic badges ("Tid", "Geografi", "Mål").
   const roleByDim = {};
-  const roles = tableMetadata.role || {};
+  const roles = VarSelect.tableMetadata.role || {};
   (roles.time || []).forEach(d => { roleByDim[d] = 'time'; });
   (roles.geo || []).forEach(d => { roleByDim[d] = 'geo'; });
   (roles.metric || []).forEach(d => { roleByDim[d] = 'metric'; });
 
   dimensions.forEach(dimCode => {
-    const dimension = tableMetadata.dimension[dimCode];
+    const dimension = VarSelect.tableMetadata.dimension[dimCode];
     if (!dimension) return;
 
     const values = dimension.category.label;
     const valueCount = Object.keys(values).length;
     const role = roleByDim[dimCode] || null;
-    const isTimeDim = role === 'time' || dimCode === 'Tid' || dimCode.toLowerCase().includes('tid');
+    const isTimeDim = isTimeDimension(dimCode);
     const roleBadgeHtml = role
       ? '<span class="variable-role-badge role-' + role + '">' + t('variable.role.' + role) + '</span>'
       : '';
@@ -185,7 +185,7 @@ function autoSelectSingleValueDimensions() {
     // Only auto-select if exactly one value exists
     if (allItems.length === 1) {
       const singleItem = allItems[0];
-      const dimension = tableMetadata.dimension[dimCode];
+      const dimension = VarSelect.tableMetadata.dimension[dimCode];
       const dimLabel = dimension ? dimension.label : dimCode;
 
       logger.log('[VariableSelect] Auto-selecting single value for mandatory dimension "' + dimLabel + '"');
@@ -253,12 +253,12 @@ async function restoreSelections() {
             const codelistInfo = extractCodelistCodes(codelistData);
 
             // Get dimension's original elimination status
-            const dimension = tableMetadata.dimension[dimCode];
+            const dimension = VarSelect.tableMetadata.dimension[dimCode];
             const originalElimination = dimension.extension?.elimination === true;
             const effectiveElimination = originalElimination || (codelistData.elimination === true);
 
             // Store codelist info
-            activeCodelists[dimCode] = {
+            VarSelect.activeCodelists[dimCode] = {
               codelistId: savedCodelistId,
               elimination: effectiveElimination,
               isAggregated: codelistInfo.isAggregated,
@@ -278,7 +278,7 @@ async function restoreSelections() {
           delete AppState.activeCodelistIds[dimCode];
 
           // Update URL to remove broken codelist reference
-          debouncedURLUpdate();
+          VarSelect.debouncedURLUpdate();
         }
       }
     }
@@ -340,9 +340,9 @@ function renderValueList(dimCode, dimension, isTimeDim) {
   // Time dimensions: show newest values first (reverse chronological)
   if (isTimeDim) {
     codes = codes.slice().reverse();
-  } else if (dimensionValueOrder[dimCode]) {
+  } else if (VarSelect.dimensionValueOrder[dimCode]) {
     // Use pre-loaded codelist ordering: codelist codes first, then remaining
-    const preferredOrder = dimensionValueOrder[dimCode];
+    const preferredOrder = VarSelect.dimensionValueOrder[dimCode];
     const remaining = new Set(codes);
     const orderedCodes = [];
 

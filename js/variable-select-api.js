@@ -66,10 +66,7 @@ function updateQueryPreview() {
     const values = selection[dimension];
     let valueStr;
     if (Array.isArray(values) && values.length > 0) {
-      const isTimeDim = tableMetadata?.role?.time?.length
-        ? tableMetadata.role.time.includes(dimension)
-        : dimension === 'Tid' || dimension.toLowerCase().includes('tid');
-      if (isTimeDim) {
+      if (isTimeDimension(dimension)) {
         valueStr = values.length > 2 ? 'from(' + values[0] + ')' : 'top(' + values.length + ')';
       } else {
         valueStr = values.join(',');

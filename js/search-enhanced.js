@@ -162,7 +162,11 @@ const SearchEnhanced = {
       for (const group of this.SYNONYM_GROUPS) {
         if (group.includes(token)) {
           group.forEach(variant => {
-            if (variant.length >= 4) variants.add(variant);
+            if (variant.length >= 4) {
+              // Quote multi-word phrases so Lucene treats them as a single phrase
+              // rather than splitting on whitespace into bare OR terms.
+              variants.add(/\s/.test(variant) ? `"${variant}"` : variant);
+            }
           });
         }
       }

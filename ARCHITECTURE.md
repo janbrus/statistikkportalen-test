@@ -27,7 +27,7 @@ search-view.js      — renderSearchView (uses BrowserState, SearchEnhanced, api
 topic-view.js       — renderTopicView (uses BrowserState, URLRouter)
 variable-select-state.js     ─┐
 variable-select-status.js     │
-variable-select-codelists.js  │  All share module-level variables
+variable-select-codelists.js  │  All share the VarSelect state object
 variable-select-render.js     │  (tableMetadata, activeCodelists, etc.)
 variable-select-events.js     │  defined in state.js
 variable-select-api.js        │
@@ -72,16 +72,22 @@ topicFilters        — { includeDiscontinued, frequencyFilter, updatedFilter }
 _searchIndex        — Lazily built normalized index for enhanced search
 ```
 
-### Module-level variables in variable-select-state.js
+### `VarSelect` (variable-select-state.js)
 
-Shared across all six `variable-select-*.js` files via closure over global scope:
+Variable-select state object, shared across all six `variable-select-*.js` files via global scope. Fields are accessed as `VarSelect.<name>`:
 
 ```
 tableMetadata       — Full JSON-Stat2 metadata for current table
 activeCodelists     — { DimCode: { codelistId, values, elimination, ... } }
 dimensionValueOrder — { DimCode: ["code1","code2",...] } (ordering from first codelist)
 lastClickedIndex    — { DimCode: N } (for shift-click range selection)
+urlUpdateTimer      — debounce timer ID
+debouncedURLUpdate() — method that updates URL hash with current selection (500ms debounce)
 ```
+
+`isTimeDimension(dimCode)` is also defined in this file as a free function — prefers `VarSelect.tableMetadata.role.time`, falls back to a name heuristic for tables without role metadata.
+
+In debug mode (`AppConfig.debug = true`), `VarSelect` is exposed on `window` for live inspection.
 
 ### Module-level variables in table-display.js
 
@@ -149,7 +155,7 @@ BrowserState.selectTable("09772")
         → buildNavigationBreadcrumb()             // Show topic path leading to this table
         → api.getTableMetadata("09772")           // Cached 7 days
         → displayVariables()
-           → Look up roleByDim from tableMetadata.role (time/geo/metric)
+           → Look up roleByDim from VarSelect.tableMetadata.role (time/geo/metric)
            → For each dimension in metadata:
               → renderDimensionCard()              // Title, role badge (Tid/Geografi/Statistikkvariabel),
                                                    // elimination badge, selection mode buttons, value list

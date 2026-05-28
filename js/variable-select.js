@@ -303,7 +303,7 @@ async function loadTableMetadata(tableId) {
     return;
   }
 
-  tableMetadata = data;
+  VarSelect.tableMetadata = data;
   logger.log('[VariableSelect] Loaded metadata:', data);
 
   // Update title if it was set as a placeholder during direct URL navigation
@@ -316,8 +316,8 @@ async function loadTableMetadata(tableId) {
   }
 
   // Reset codelist state for new table
-  Object.keys(activeCodelists).forEach(k => delete activeCodelists[k]);
-  Object.keys(dimensionValueOrder).forEach(k => delete dimensionValueOrder[k]);
+  VarSelect.activeCodelists = {};
+  VarSelect.dimensionValueOrder = {};
 
   // Display variables
   await displayVariables();
