@@ -57,8 +57,11 @@ const URLRouter = {
    * @returns {Object} {route: string, params: Object}
    */
   parseHash(hash = window.location.hash) {
-    // Remove leading # and parse route and query string
-    const match = hash.match(/^#([^?]+)(\?(.+))?$/);
+    // Remove leading # and parse route and query string.
+    // Route segment allows zero chars so "#?q=bnp" still surfaces the query
+    // to the caller (handleRoute treats an empty route as home; search-view
+    // pre-fill picks up params.q from there).
+    const match = hash.match(/^#([^?]*)(\?(.+))?$/);
 
     if (!match) {
       return { route: '', params: {} };
@@ -134,7 +137,13 @@ const URLRouter = {
     logger.log('[Router] Handling route:', route, params);
 
     if (!route || route === 'home') {
-      await this._handleHomeRoute(params);
+      // Bare "#?q=..." (no route segment) shouldn't silently drop the query.
+      // Dispatch to search when query params look search-shaped.
+      if (params.q || params.subj || params.freq || params.upd) {
+        await this._handleSearchRoute(params);
+      } else {
+        await this._handleHomeRoute(params);
+      }
     } else if (route === 'search') {
       await this._handleSearchRoute(params);
     } else if (route.startsWith('topic/')) {

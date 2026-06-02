@@ -125,6 +125,8 @@ const translations = {
     'variable.defaultSelection':      'Fyll inn standardvalg',
     'variable.defaultSelectionTitle': 'Hent og fyll inn tabellens anbefalte standardutvalg',
     'variable.defaultSelectionLoading': 'Henter standardvalg...',
+    'variable.compactView':           'Kompaktvisning',
+    'variable.compactViewTitle':      'Vis dimensjoner i et flerkolonners rutenett som utnytter brede skjermer',
 
     // Variable mode buttons
     'variable.btn.all':         'Alle (*)',
@@ -192,6 +194,15 @@ const translations = {
     'table.notApplicable': 'Ikke aktuelt',
     'table.prefix':       'Tabell',
     'table.unnamed':      'Uten navn',
+
+    // Chart view
+    'chart.toggle':        '📈 Vis som diagram',
+    'chart.toggleTitle':   'Vis tidsserien som linjediagram',
+    'chart.tooManyLines':  'Diagrammet har {0} linjer — vurder å begrense utvalget for bedre lesbarhet.',
+    'chart.source':        'Kilde',
+    'chart.tableWord':     'tabell',
+    'chart.lastUpdated':   'Sist oppdatert',
+    'chart.series':        'Serie',
 
     // Table rotation dialog
     'rotation.title':        'Roter tabell',
@@ -380,6 +391,8 @@ const translations = {
     'variable.defaultSelection':      'Load default selection',
     'variable.defaultSelectionTitle': 'Fetch and apply the table\'s recommended default selection',
     'variable.defaultSelectionLoading': 'Loading default selection...',
+    'variable.compactView':           'Compact view',
+    'variable.compactViewTitle':      'Show dimensions in a multi-column grid that takes advantage of wide screens',
 
     'variable.btn.all':         'All (*)',
     'variable.btn.selectAll':   'Select all',
@@ -442,6 +455,15 @@ const translations = {
     'table.notApplicable': 'Not applicable',
     'table.prefix':        'Table',
     'table.unnamed':       'Unnamed',
+
+    // Chart view
+    'chart.toggle':        '\uD83D\uDCC8 Show as chart',
+    'chart.toggleTitle':   'Show the time series as a line chart',
+    'chart.tooManyLines':  'The chart has {0} lines \u2014 consider narrowing your selection for readability.',
+    'chart.source':        'Source',
+    'chart.tableWord':     'table',
+    'chart.lastUpdated':   'Last updated',
+    'chart.series':        'Series',
 
     'rotation.title':        'Rotate table',
     'rotation.instructions': 'Drag dimensions between rows and columns to change the table layout.',
@@ -681,6 +703,15 @@ const translations = {
     'table.notAvailable':  'Inte tillg\u00E4nglig',
     'table.confidential':  'Konfidentiellt',
     'table.notApplicable': 'Inte till\u00E4mpligt',
+
+    // Chart view
+    'chart.toggle':        '\uD83D\uDCC8 Visa som diagram',
+    'chart.toggleTitle':   'Visa tidsserien som linjediagram',
+    'chart.tooManyLines':  'Diagrammet har {0} linjer \u2014 \u00F6verv\u00E4g att begr\u00E4nsa urvalet f\u00F6r b\u00E4ttre l\u00E4sbarhet.',
+    'chart.source':        'K\u00E4lla',
+    'chart.tableWord':     'tabell',
+    'chart.lastUpdated':   'Senast uppdaterad',
+    'chart.series':        'Serie',
     'table.prefix':        'Tabell',
     'table.unnamed':       'Utan namn',
 

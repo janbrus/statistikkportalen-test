@@ -1,7 +1,7 @@
 # Statistikkportalen
 Statistikkportalen er et uoffisielt grensesnitt som forbedrer tilgangen til SSBs data. Applikasjonen gir rask navigering gjennom lokal caching, et kompakt grensesnitt for å minimere scrolling, og enklere oppdagelse av tabeller gjennom menynavigering.
 
-Applikasjonen kan tilpasses andre systemer som bruker PxWebApi v2, eksempelvis SCBs statistikkbank. Det krever kun at tre filer byttes ut: `config.js` (API-URL, kilde, språk), `subjects.js` (emnehierarki) og `synonyms.js` (søkesynonymer).
+Applikasjonen kan tilpasses andre systemer som bruker PxWebApi v2, eksempelvis SCBs statistikkbank. Det krever kun at tre filer byttes ut: `config.js` (API-URL, kilde, språk), `subjects.js` (emnehierarki) og `synonyms.js` (søkesynonymer). Visuell tilpassing (farger, typografi, avrunding) styres av CSS-variabler i `:root` i `css/main.css`.
 
 ## Funksjonalitet
 1. **Oppdag tabeller raskt og enkelt**
@@ -19,6 +19,7 @@ Applikasjonen kan tilpasses andre systemer som bruker PxWebApi v2, eksempelvis S
      - `top(n)` — De n siste verdiene (f.eks. `top(12)` for siste 12 måneder)
      - `from(periode)` — Alle verdier fra og med en gitt periode (f.eks. `from(2020M01)`)
    - Visuelle indikatorer for valideringsstatus
+   - Valgfri kompaktvisning som plasserer dimensjonene i et flerkolonners rutenett på brede skjermer (huskes per nettleser)
 
 3. **API-bygger**
    - Generer GET- og POST-URL direkte fra variabelvalget
@@ -28,11 +29,12 @@ Applikasjonen kan tilpasses andre systemer som bruker PxWebApi v2, eksempelvis S
    - Kopier URL eller POST-body med ett klikk
 
 4. **Datavisning**
-   - Intelligent standard layout
+   - Intelligent standard layout — Statistikkvariabel som øverste kolonneoverskrift, tid nedover som rader, og automatisk kompaktvisning som stabler alle dimensjoner i kolonneoverskriften når tabellen er smal nok
    - Sticky headers for enkel navigering i store tabeller
    - Norske tallformater (mellomrom som tusenskilletegn, komma som desimalskilletegn)
    - Korrekt visning av statuskoder (`.`, `..`, `:`) per SSBs konvensjon
    - Tabellinfo med direktelenke til "Om statistikken" på ssb.no
+   - Linjediagram-toggle (📈) for tidsserier — SSB-stilrent i offisiell palett, med riktig desimalpresisjon per statistikkvariabel (hentet fra `category.unit.decimals`), statuskoder rendret som hull, og obligatorisk kildelinje under figuren
 
 5. **Tabellrotasjon**
    - Drag-and-drop-grensesnitt for å endre tabellayout

@@ -9,7 +9,7 @@
 let tableMetadata = null;
 
 // Track last clicked item index per dimension for shift-click range selection
-const lastClickedIndex = {};
+  /**
 
 /**
  * Track active codelist per dimension.

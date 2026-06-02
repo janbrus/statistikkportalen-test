@@ -140,8 +140,18 @@ function setupCodelistDropdowns() {
         }
       }
 
-      // Reset selection when switching codelist
-      container.dataset.mode = 'specific';
+      // Specific selections are tied to the previous value list and have to
+      // be cleared on every codelist switch — but the user's MODE choice
+      // (star / top) is a higher-level intent that survives. Preserve star
+      // unconditionally (every codelist supports "all"); preserve top only
+      // for time dimensions, which is where top(N) is semantically defined.
+      const previousMode = container.dataset.mode;
+      const preservedMode = previousMode === 'star'
+        ? 'star'
+        : (previousMode === 'top' && isTimeDimension(dimCode))
+        ? 'top'
+        : 'specific';
+      container.dataset.mode = preservedMode;
       container.querySelectorAll('.value-list-item').forEach(item => {
         item.classList.remove('selected');
       });

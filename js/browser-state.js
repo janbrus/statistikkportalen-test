@@ -53,6 +53,7 @@ const BrowserState = {
     this.isLoaded = false;
     this._initPromise = null;
     this.allTables = [];
+    this.recentTables = null;
     this.menuHierarchy = null;
   },
 
@@ -63,14 +64,22 @@ const BrowserState = {
       // Fetch API config first to apply server limits before any data requests
       await api.getConfig();
 
-      // Fetch all tables (with automatic pagination if needed)
-      const response = await api.getAllTables({
-        lang: getCurrentApiLang(),
-        includeDiscontinued: true
-      });
+      // Fetch full table list and the last-7-days slice in parallel.
+      // recentTables powers the front-page "Sist oppdatert" tiles via the fast
+      // path in _collectRecentUpdateGroups; if the small fetch fails we fall
+      // back to walking the full hierarchy.
+      const lang = getCurrentApiLang();
+      const [response, recentResponse] = await Promise.all([
+        api.getAllTables({ lang, includeDiscontinued: true }),
+        api.getTables({ lang, includeDiscontinued: false, pastDays: 7 }).catch(err => {
+          logger.warn('[BrowserState] Recent-tables fetch failed; front page will walk full hierarchy:', err);
+          return null;
+        })
+      ]);
 
       this.allTables = response.tables;
-      logger.log(`[BrowserState] Loaded ${this.allTables.length} tables`);
+      this.recentTables = recentResponse?.tables || null;
+      logger.log(`[BrowserState] Loaded ${this.allTables.length} tables (${this.recentTables ? this.recentTables.length : 0} recent)`);
 
       this.menuHierarchy = new MenuHierarchy();
       this.menuHierarchy.buildHierarchy(this.allTables);

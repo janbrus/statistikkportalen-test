@@ -280,26 +280,12 @@ function applyPreset(preset, dimensions, overlay) {
 
   switch (preset) {
     case 'default':
-      // Default layout from determineDefaultLayout
-      const timeDimIndex = dimensions.findIndex(d =>
-        d === 'Tid' || d.toLowerCase().includes('tid')
-      );
-      if (timeDimIndex !== -1) {
-        const nonTimeDims = dimensions.filter((_, i) => i !== timeDimIndex);
-        if (nonTimeDims.length > 0) {
-          newRows = [dimensions[timeDimIndex]];
-          newCols = nonTimeDims;
-        } else {
-          newRows = [dimensions[timeDimIndex]];
-          newCols = [];
-        }
-      } else if (dimensions.length > 1) {
-        newRows = dimensions.slice(0, -1);
-        newCols = [dimensions[dimensions.length - 1]];
-      } else {
-        newRows = [];
-        newCols = dimensions;
-      }
+      // Single source of truth — determineDefaultLayout knows the metric/time
+      // roles from JSON-Stat2 and the per-dim selected counts, which a string
+      // array of dimension codes alone cannot represent.
+      const defaultLayout = determineDefaultLayout(currentData);
+      newRows = defaultLayout.rows;
+      newCols = defaultLayout.columns;
       break;
 
     case 'transpose':

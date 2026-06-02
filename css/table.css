@@ -1,7 +1,25 @@
 /**
  * Table Styles for Data Display
  * Optimized for displaying statistical data tables
+ *
+ * Breakpoints: 768px (mobile), 1100px (narrow tablet)
  */
+
+/* ========== Table View Width Override ========== */
+
+/* When the table view is active, let the page widen and trim horizontal padding
+   so wide data tables can fill more of a 1920+ screen. The body[data-view]
+   attribute is set by renderCurrentView() in utils.js. */
+body[data-view="table"] main {
+  max-width: 1880px;
+  padding-left: var(--spacing-md);
+  padding-right: var(--spacing-md);
+}
+
+body[data-view="table"] .view-container {
+  padding-left: var(--spacing-lg);
+  padding-right: var(--spacing-lg);
+}
 
 /* ========== Table Container ========== */
 
@@ -60,7 +78,7 @@
 
 .data-table th,
 .data-table td {
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
   border: 1px solid var(--color-border);
   text-align: left;
 }
@@ -92,8 +110,9 @@
   color: white;
   font-weight: 600;
   text-align: center;
-  vertical-align: middle;
-  white-space: nowrap;
+  vertical-align: bottom;
+  overflow-wrap: break-word;
+  max-width: 200px;
   min-width: 80px;
 }
 
@@ -117,9 +136,10 @@
 
 /* ========== Data Cells ========== */
 
-.data-cell {
+.data-table .data-cell {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   background: var(--color-surface);
 }
@@ -186,16 +206,27 @@
 
 .data-table.compact th,
 .data-table.compact td {
-  padding: var(--spacing-xs) var(--spacing-sm);
   font-size: 0.8rem;
 }
 
-/* ========== Large Numbers ========== */
+/* ========== Chart View ========== */
 
-.data-table .data-cell {
-  text-align: right;
-  font-feature-settings: "tnum"; /* Tabular numbers */
-  letter-spacing: 0.02em;
+.chart-container {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  height: 520px;
+  position: relative;
+}
+
+.chart-container canvas {
+  max-width: 100%;
+}
+
+.chart-warning {
+  margin-bottom: var(--spacing-md);
 }
 
 /* ========== Responsive Table ========== */
@@ -209,11 +240,6 @@
     font-size: 0.75rem;
   }
 
-  .data-table th,
-  .data-table td {
-    padding: var(--spacing-xs) var(--spacing-sm);
-  }
-
   .table-controls {
     flex-direction: column;
     align-items: stretch;
@@ -222,6 +248,11 @@
   .control-group {
     width: 100%;
     justify-content: center;
+  }
+
+  .chart-container {
+    height: 360px;
+    padding: var(--spacing-sm);
   }
 }
 
@@ -321,13 +352,6 @@
 }
 
 /* ========== Table Performance Optimization ========== */
-
-/* Use GPU acceleration for sticky elements */
-.data-table thead,
-.data-table .row-header {
-  will-change: transform;
-  transform: translateZ(0);
-}
 
 /* Optimize rendering for large tables */
 .table-wrapper {

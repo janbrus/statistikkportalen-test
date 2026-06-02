@@ -311,11 +311,20 @@ async function restoreSelections() {
     } else if (Array.isArray(dimSelection) && dimSelection.length > 0) {
       // Specific mode: mark matching items as selected
       const selectedCodes = new Set(dimSelection);
+      let lastRestoredIndex = -1;
       container.querySelectorAll('.value-list-item').forEach(item => {
         if (selectedCodes.has(item.dataset.code)) {
           item.classList.add('selected');
+          const idx = parseInt(item.dataset.index, 10);
+          if (Number.isFinite(idx)) lastRestoredIndex = idx;
         }
       });
+      // Seed the shift-click anchor so the next shift-click extends from the
+      // last restored item instead of treating the click as a plain click and
+      // wiping the restored selection.
+      if (lastRestoredIndex >= 0) {
+        VarSelect.lastClickedIndex[dimCode] = lastRestoredIndex;
+      }
     }
 
     updateValueCounter(card);

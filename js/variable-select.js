@@ -68,6 +68,8 @@ async function renderVariableSelection(container) {
     updatePageTitle([extractTableTitle(table.label), t('variable.heading')]);
   }
 
+  const isCompact = localStorage.getItem('varSelectLayout') === 'compact';
+
   container.innerHTML = `
     <div class="view-container">
       <div class="view-header">
@@ -80,13 +82,20 @@ async function renderVariableSelection(container) {
         <p class="view-description">
           ${t('variable.instructions')}
         </p>
-        <button id="load-default-selection" class="btn-secondary btn-sm"
-                title="${t('variable.defaultSelectionTitle')}">
-          ${t('variable.defaultSelection')}
-        </button>
+        <div class="view-header-buttons">
+          <button id="load-default-selection" class="btn-secondary btn-sm"
+                  title="${t('variable.defaultSelectionTitle')}">
+            ${t('variable.defaultSelection')}
+          </button>
+          <button id="toggle-compact-view" class="btn-secondary btn-sm${isCompact ? ' btn-active' : ''}"
+                  title="${t('variable.compactViewTitle')}"
+                  aria-pressed="${isCompact}">
+            ${t('variable.compactView')}
+          </button>
+        </div>
       </div>
 
-      <div id="variables-container" class="variables-container">
+      <div id="variables-container" class="variables-container${isCompact ? ' compact' : ''}">
         <p class="loading-message">${t('loading.metadata')}</p>
       </div>
 
@@ -241,6 +250,23 @@ async function renderVariableSelection(container) {
 
   // Set up default selection button
   document.getElementById('load-default-selection')?.addEventListener('click', handleLoadDefaultSelection);
+
+  // Set up compact-view toggle
+  document.getElementById('toggle-compact-view')?.addEventListener('click', handleToggleCompactView);
+}
+
+/**
+ * Toggle compact (grid) vs full (stacked) layout for the variable cards.
+ * Choice is persisted in localStorage under 'varSelectLayout'.
+ */
+function handleToggleCompactView() {
+  const container = document.getElementById('variables-container');
+  const btn = document.getElementById('toggle-compact-view');
+  if (!container || !btn) return;
+  const nowCompact = container.classList.toggle('compact');
+  btn.classList.toggle('btn-active', nowCompact);
+  btn.setAttribute('aria-pressed', String(nowCompact));
+  localStorage.setItem('varSelectLayout', nowCompact ? 'compact' : 'full');
 }
 
 /**

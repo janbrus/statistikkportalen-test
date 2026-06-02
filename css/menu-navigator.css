@@ -1,5 +1,7 @@
 /**
  * Menu Navigator Styles - SSB-style progressive navigation
+ *
+ * Breakpoints: 768px (mobile), 1100px (narrow tablet)
  */
 
 /* ========== Header Home Link ========== */
@@ -28,14 +30,14 @@
   max-width: 700px;
   padding: 1rem 1.25rem;
   font-size: 17px;
-  border: 2px solid #ddd;
+  border: 2px solid var(--color-border);
   border-radius: 6px;
   transition: border-color 0.2s;
 }
 
-.front-search-input:focus {
+.front-search-input:focus-visible {
   outline: none;
-  border-color: #1a9d49;
+  border-color: var(--color-secondary);
   box-shadow: 0 0 0 3px rgba(26, 157, 73, 0.1);
 }
 
@@ -44,13 +46,13 @@
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 0;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .subject-group-column {
-  border-right: 1px solid #ddd;
+  border-right: 1px solid var(--color-border);
   padding: 0;
 }
 
@@ -63,9 +65,9 @@
   padding: 0.75rem 1rem;
   font-size: 14px;
   font-weight: 600;
-  color: #333;
-  background: #f5f5f5;
-  border-bottom: 1px solid #ddd;
+  color: var(--color-text);
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .subject-list {
@@ -85,15 +87,17 @@
 .front-subject-link {
   display: block;
   padding: 0.75rem 1rem;
-  color: #333;
+  color: var(--color-text);
   text-decoration: none;
   font-size: 14px;
-  transition: all 0.2s;
+  transition: background-color var(--transition-default),
+              color var(--transition-default),
+              padding-left var(--transition-default);
 }
 
 .front-subject-link:hover {
   background: #e8f5ec;
-  color: #1a9d49;
+  color: var(--color-secondary);
   padding-left: 1.25rem;
 }
 
@@ -103,13 +107,13 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .subject-grid {
     grid-template-columns: 1fr;
   }
   .subject-group-column {
     border-right: none;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--color-border);
   }
   .subject-group-column:last-child {
     border-bottom: none;
@@ -132,6 +136,7 @@
 .search-container {
   padding: 0.75rem 0 0.5rem 0;
   max-width: 100%;
+  margin-bottom: var(--spacing-lg);
 }
 
 .search-input {
@@ -139,15 +144,15 @@
   max-width: 600px;
   padding: 0.6rem 0.9rem;
   font-size: 15px;
-  border: 2px solid #ddd;
+  border: 2px solid var(--color-border);
   border-radius: 4px;
   transition: border-color 0.2s;
   margin-bottom: 0.5rem;
 }
 
-.search-input:focus {
+.search-input:focus-visible {
   outline: none;
-  border-color: #1a9d49;
+  border-color: var(--color-secondary);
 }
 
 /* Search Filters */
@@ -186,26 +191,26 @@
 .filter-select {
   padding: 0.5rem 0.75rem;
   font-size: 14px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: #fff;
+  background: var(--color-surface);
   cursor: pointer;
   transition: border-color 0.2s;
 }
 
 .filter-select:hover {
-  border-color: #999;
+  border-color: var(--color-text-light);
 }
 
-.filter-select:focus {
+.filter-select:focus-visible {
   outline: none;
-  border-color: #1a9d49;
+  border-color: var(--color-secondary);
 }
 
 /* Subject Group Navigation (Dropdown Menu) */
 .subject-groups {
-  background: #f5f5f5;
-  border-bottom: 1px solid #ddd;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
   margin-bottom: 0;
 }
 
@@ -226,13 +231,14 @@
   padding: 0.75rem 1rem;
   background: transparent;
   border: none;
-  border-right: 1px solid #ddd;
+  border-right: 1px solid var(--color-border);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--color-text);
   text-align: left;
-  transition: all 0.2s;
+  transition: background-color var(--transition-default),
+              color var(--transition-default);
 }
 
 .subject-group-button .chevron {
@@ -243,8 +249,8 @@
 }
 
 .subject-group-item:hover .subject-group-button {
-  background: #fff;
-  color: #1a9d49;
+  background: var(--color-surface);
+  color: var(--color-secondary);
 }
 
 .subject-group-item:hover .chevron {
@@ -258,8 +264,8 @@
   top: 100%;
   left: 0;
   min-width: 200px;
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-top: none;
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   z-index: 1000;
@@ -272,16 +278,18 @@
 .subject-link {
   display: block;
   padding: 0.75rem 1rem;
-  color: #333;
+  color: var(--color-text);
   text-decoration: none;
   font-size: 14px;
-  transition: all 0.2s;
+  transition: background-color var(--transition-default),
+              color var(--transition-default),
+              padding-left var(--transition-default);
   border-bottom: 1px solid #f0f0f0;
 }
 
 .subject-link:hover {
   background: #e8f5ec;
-  color: #1a9d49;
+  color: var(--color-secondary);
   padding-left: 1.25rem;
 }
 
@@ -293,11 +301,11 @@
 .breadcrumbs {
   padding: 1rem 0;
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-light);
 }
 
 .breadcrumb-link {
-  color: #1a9d49;
+  color: var(--color-secondary);
   text-decoration: none;
 }
 
@@ -307,11 +315,11 @@
 
 .breadcrumb-sep {
   margin: 0 0.5rem;
-  color: #999;
+  color: var(--color-text-light);
 }
 
 .breadcrumb-current {
-  color: #333;
+  color: var(--color-text);
 }
 
 /* Subject Cards (Level 1) */
@@ -323,17 +331,19 @@
 }
 
 .subject-card {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 2rem 1.5rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color var(--transition-default),
+              box-shadow var(--transition-default),
+              transform var(--transition-default);
 }
 
 .subject-card:hover {
-  border-color: #1a9d49;
+  border-color: var(--color-secondary);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   transform: translateY(-2px);
 }
@@ -347,7 +357,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
 }
 
 /* Subtopic Cards (Level 2) */
@@ -359,17 +369,18 @@
 }
 
 .subtopic-card {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 1.5rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color var(--transition-default),
+              box-shadow var(--transition-default);
   position: relative;
 }
 
 .subtopic-card:hover {
-  border-color: #1a9d49;
+  border-color: var(--color-secondary);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
@@ -377,14 +388,14 @@
   margin: 0 0 0.5rem 0;
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   padding-right: 2rem;
 }
 
 .subtopic-card p {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-light);
 }
 
 .card-arrow {
@@ -392,7 +403,7 @@
   right: 1.5rem;
   top: 50%;
   transform: translateY(-50%);
-  color: #1a9d49;
+  color: var(--color-secondary);
   font-size: 20px;
   font-weight: bold;
 }
@@ -406,17 +417,18 @@
 }
 
 .category-card {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 1.5rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color var(--transition-default),
+              box-shadow var(--transition-default);
   position: relative;
 }
 
 .category-card:hover {
-  border-color: #1a9d49;
+  border-color: var(--color-secondary);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
@@ -424,14 +436,14 @@
   margin: 0 0 0.5rem 0;
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   padding-right: 2rem;
 }
 
 .category-card p {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-light);
 }
 
 /* Table Groups (Level 4) */
@@ -440,15 +452,15 @@
 }
 
 .table-group {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   margin-bottom: 1rem;
   overflow: hidden;
 }
 
 .table-group-header {
-  background: #f5f5f5;
+  background: var(--color-background);
   padding: 0.75rem 1rem;
   cursor: pointer;
   font-weight: 600;
@@ -495,15 +507,15 @@
 
 .table-list thead {
   background: #fafafa;
-  border-top: 1px solid #ddd;
+  border-top: 1px solid var(--color-border);
 }
 
 .table-list th {
   text-align: left;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  color: #666;
-  border-bottom: 1px solid #ddd;
+  color: var(--color-text-light);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .table-list td {
@@ -528,7 +540,7 @@
 }
 
 .table-link {
-  color: #1a9d49;
+  color: var(--color-secondary);
   text-decoration: none;
 }
 
@@ -542,7 +554,7 @@
   margin-left: 0.3rem;
   padding: 0.15rem 0.4rem;
   background: #6c8ebf;
-  color: #fff;
+  color: var(--color-surface);
   font-size: 10px;
   font-weight: 600;
   border-radius: 3px;
@@ -557,7 +569,7 @@
   margin-left: 0.4rem;
   padding: 0.1rem 0.35rem;
   background: #ff9800;
-  color: #fff;
+  color: var(--color-surface);
   font-size: 9px;
   font-weight: 600;
   border-radius: 3px;
@@ -578,7 +590,7 @@
 
   .subject-group-button {
     border-right: none;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--color-border);
   }
 
   .subject-dropdown {
@@ -633,7 +645,7 @@
   align-items: center;
   justify-content: center;
   padding: 4rem 2rem;
-  color: #666;
+  color: var(--color-text-light);
 }
 
 .loading-spinner::before {
@@ -641,7 +653,7 @@
   width: 40px;
   height: 40px;
   border: 4px solid #f0f0f0;
-  border-top-color: #1a9d49;
+  border-top-color: var(--color-secondary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-bottom: 1rem;
@@ -655,12 +667,12 @@
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
-  color: #999;
+  color: var(--color-text-light);
 }
 
 .empty-state h3 {
   margin: 0 0 0.5rem 0;
-  color: #666;
+  color: var(--color-text-light);
 }
 
 /* Page Title */
@@ -670,19 +682,19 @@
   margin: 1rem 0 0 0;
   font-size: 28px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text);
 }
 
 /* Welcome Message */
 .welcome-message {
   text-align: center;
   padding: 2rem 1.5rem;
-  color: #666;
+  color: var(--color-text-light);
 }
 
 .welcome-message h2 {
   margin: 0 0 0.75rem 0;
-  color: #333;
+  color: var(--color-text);
   font-size: 22px;
 }
 
@@ -699,32 +711,34 @@
 .search-results h2 {
   margin: 0 0 0.5rem 0;
   font-size: 24px;
-  color: #333;
+  color: var(--color-text);
 }
 
 .search-results > p {
   margin: 0 0 1.5rem 0;
-  color: #666;
+  color: var(--color-text-light);
 }
 
 .no-results {
   text-align: center;
   padding: 3rem 2rem;
-  color: #999;
+  color: var(--color-text-light);
 }
 
 .info-message {
   margin-top: 1rem;
   padding: 0.75rem 1rem;
-  background: #f5f5f5;
-  border-left: 3px solid #1a9d49;
-  color: #666;
+  background: var(--color-background);
+  border-left: 3px solid var(--color-secondary);
+  color: var(--color-text-light);
+  text-align: center;
+  font-style: italic;
 }
 
 /* Nested Hierarchy Groups (Level 4+ deep navigation) */
 .hierarchy-group {
   margin: 0.5rem 0;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -734,9 +748,9 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 15px;
-  color: #333;
+  color: var(--color-text);
   list-style: none;
-  background: #f5f5f5;
+  background: var(--color-background);
   user-select: none;
   transition: color 0.2s;
 }
@@ -758,13 +772,13 @@
 }
 
 .hierarchy-group-header:hover {
-  color: #1a9d49;
+  color: var(--color-secondary);
 }
 
 .hierarchy-count {
   font-weight: 400;
   font-size: 13px;
-  color: #999;
+  color: var(--color-text-light);
   margin-left: 0.25rem;
 }
 
@@ -780,8 +794,8 @@
 
 /* Search Results - Grouped by Subject */
 .search-group {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   margin-bottom: 1rem;
   overflow: hidden;
@@ -792,7 +806,7 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 15px;
-  background: #f5f5f5;
+  background: var(--color-background);
   list-style: none;
   user-select: none;
 }
@@ -816,7 +830,7 @@
 .search-group-count {
   font-weight: 400;
   font-size: 13px;
-  color: #999;
+  color: var(--color-text-light);
   margin-left: 0.25rem;
 }
 

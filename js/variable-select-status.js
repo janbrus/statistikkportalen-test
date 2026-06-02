@@ -219,19 +219,36 @@ function updateSelectionCellCount() {
 
     const codelistInfo = activeCodelists[dimCode];
 
+    // For aggregated (agg_) codelists, the dimension's effective width is the
+    // number of aggregate codes (what we actually POST), not the number of
+    // underlying originals that getTrueDimensionValueCount returns. Without
+    // this, star mode + an agg_ codelist over-counts by 10–30× and the fetch
+    // button is wrongly disabled by the maxCells guard.
+    const isAggCodelist = codelistInfo && codelistInfo.isAggregated;
+    if (isAggCodelist) {
+      dimMaxCount = codelistInfo.values.length;
+    }
+
     if (mode === 'star') {
       // All values selected
-      dimSelectedCount = trueCount;
+      dimSelectedCount = isAggCodelist ? codelistInfo.values.length : trueCount;
     } else if (mode === 'top') {
       // Last N values
       const topN = parseInt(card.querySelector('.top-n-input')?.value || '10', 10);
       dimSelectedCount = Math.min(topN, trueCount);
     } else {
-      // Specific mode - count selected items
-      if (codelistInfo) {
-        // Codelist active: count expanded codes via valueMap
-        // For filter codelists this equals selectedItems.length (each maps to 1 code)
-        // For aggregated codelists this gives the true expanded code count
+      // Specific mode - count selected items.
+      //
+      // Mirror what getVariableSelection() actually sends:
+      //   - vs_ (filter) codelist: each selected item is expanded via
+      //     valueMap to original dimension codes (mostly a no-op since
+      //     vs_ valueMap[0] === code, but kept explicit for clarity).
+      //   - agg_ (aggregation) codelist: the aggregate codes are sent
+      //     AS-IS — the API returns one cell per aggregate, NOT one per
+      //     underlying original. Expanding via valueMap here would over-
+      //     count by 10–30× and wrongly disable the fetch button.
+      //   - No codelist: plain selection count.
+      if (codelistInfo && !codelistInfo.isAggregated) {
         let expandedCount = 0;
         selectedItems.forEach(item => {
           const valueMapJson = item.dataset.valuemap;
@@ -248,7 +265,6 @@ function updateSelectionCellCount() {
         });
         dimSelectedCount = expandedCount;
       } else {
-        // No codelist - just count selected items
         dimSelectedCount = selectedItems.length;
       }
     }

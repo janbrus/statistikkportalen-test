@@ -166,7 +166,7 @@ function buildMetadataSection() {
       <div class="metadata-content" style="display: none;">
         <dl>
           ${meta.source ? '<dt>Kilde</dt><dd>' + escapeHtml(meta.source) + '</dd>' : ''}
-          ${updatedStr ? '<dt>Sist oppdatert</dt><dd>' + updatedStr + '</dd>' : ''}
+          ${updatedStr ? '<dt>Sist oppdatert</dt><dd>' + escapeHtml(updatedStr) + '</dd>' : ''}
           ${officialHtml}
           ${aboutHtml}
           ${notesHtml}

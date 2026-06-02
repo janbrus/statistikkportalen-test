@@ -169,6 +169,8 @@ function renderCurrentView() {
   const content = document.getElementById('content');
   if (!content) return;
 
+  document.body.dataset.view = AppState.currentView;
+
   switch(AppState.currentView) {
     case 'home':
       updatePageTitle([]);
@@ -242,6 +244,13 @@ function formatNumber(value, decimals = null) {
   const num = parseFloat(value);
   if (isNaN(num)) {
     return value.toString();
+  }
+
+  // ±Infinity slip past isNaN but produce the literal string "Infinity" via
+  // toFixed, which would then leak into table cells. Treat them as the
+  // missing-value sentinel like null/undefined above.
+  if (!Number.isFinite(num)) {
+    return '-';
   }
 
   // Auto-detect decimals if not specified: use the original precision

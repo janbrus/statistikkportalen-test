@@ -20,6 +20,9 @@ class SSBApi {
     this.baseUrl = AppConfig.apiBaseUrl;
     this.cache = new CacheManager();
     this._lastRequestTime = 0;
+    // Promise chain that serialises the throttle bookkeeping across
+    // concurrent _throttledFetch callers — see the method below.
+    this._fetchChain = null;
   }
 
   /** Returns the current API language code (e.g. 'no', 'en', 'sv'). */
@@ -30,15 +33,43 @@ class SSBApi {
   /**
    * Throttled fetch — ensures minimum 100ms between requests to respect
    * SSB's 30 req/min rate limit and avoid accidental bursts.
+   *
+   * Concurrency note: the throttle bookkeeping (read _lastRequestTime →
+   * sleep → stamp) is serialised through _fetchChain so two concurrent
+   * callers can't both read the same stale timestamp and bypass the
+   * 100ms gap. The fetch() itself is NOT serialised — once a caller has
+   * claimed its slot in the chain, subsequent callers can immediately
+   * stamp their own slot and start their own fetch in parallel.
    */
   async _throttledFetch(url, options = {}) {
-    const now = Date.now();
-    const timeSinceLastRequest = now - this._lastRequestTime;
-    if (timeSinceLastRequest < 100) {
-      await new Promise(r => setTimeout(r, 100 - timeSinceLastRequest));
-    }
-    this._lastRequestTime = Date.now();
+    this._fetchChain = (this._fetchChain || Promise.resolve()).then(async () => {
+      const wait = Math.max(0, 100 - (Date.now() - this._lastRequestTime));
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      this._lastRequestTime = Date.now();
+    });
+    await this._fetchChain;
     return fetch(url, options);
+  }
+
+  /**
+   * Build the cache key for a tables-list request. Centralised so getAllTables
+   * and getTables can never drift on key shape — and so any future param
+   * (filters, server-side sorts, etc.) lands in one place.
+   *
+   * Uses '|' as a delimiter — encodeURIComponent on the query escapes any
+   * literal '|' to '%7C', so query strings can no longer collide with
+   * adjacent fields (e.g. a query containing '_pd_5' no longer collides
+   * with pastDays=5 the way the old underscored key did).
+   */
+  _buildTableListCacheKey({ lang, includeDiscontinued, pageSize, pageNumber = 1, query = '', pastDays = null }) {
+    return 'tables|' + [
+      lang,
+      includeDiscontinued,
+      pageSize,
+      pageNumber > 1 ? pageNumber : '',
+      query ? encodeURIComponent(query) : '',
+      pastDays != null ? pastDays : ''
+    ].join('|');
   }
 
   /**
@@ -88,10 +119,10 @@ class SSBApi {
     const resolvedLang = lang || (typeof getCurrentApiLang === 'function' ? getCurrentApiLang() : 'no');
     const pageSize = AppConfig.limits.tablePageBatchSize || 10000;
 
-    // Check cache first (same key as getTables would use for a full list)
-    const cacheKey = 'tables_' + resolvedLang + '_' + includeDiscontinued + '_' + pageSize +
-                     (query ? '_q_' + query : '') +
-                     (pastDays ? '_pd_' + pastDays : '');
+    // Check cache first (same key as getTables would use for a single-page list).
+    const cacheKey = this._buildTableListCacheKey({
+      lang: resolvedLang, includeDiscontinued, pageSize, query, pastDays
+    });
     if (useCache) {
       const cached = await this.cache.get(cacheKey);
       if (cached) {
@@ -126,7 +157,13 @@ class SSBApi {
       }
     }
 
-    const result = { tables: allTables };
+    // Include a synthetic page field so the merged blob is shape-compatible
+    // with a single-page getTables() response — callers that cache-hit this
+    // entry won't crash reading `.page.totalPages`.
+    const result = {
+      tables: allTables,
+      page: { pageNumber: 1, totalPages: 1, pageSize: allTables.length }
+    };
     await this.cache.set(cacheKey, result, AppConfig.cache.tableListTTL);
     logger.log('[API] Fetched all ' + allTables.length + ' tables across ' + totalPages + ' page(s)');
     return result;
@@ -162,10 +199,9 @@ class SSBApi {
     // pageNumber is included so that page-level entries don't collide;
     // getAllTables() bypasses per-page caching (useCache: false) and caches
     // only the final merged result under the page-1 key.
-    const cacheKey = 'tables_' + resolvedLang + '_' + includeDiscontinued + '_' + pageSize +
-                     (pageNumber > 1 ? '_p_' + pageNumber : '') +
-                     (query ? '_q_' + query : '') +
-                     (pastDays ? '_pd_' + pastDays : '');
+    const cacheKey = this._buildTableListCacheKey({
+      lang: resolvedLang, includeDiscontinued, pageSize, pageNumber, query, pastDays
+    });
 
     if (useCache) {
       const cached = await this.cache.get(cacheKey);
@@ -188,8 +224,8 @@ class SSBApi {
         params.append('query', query.trim());
       }
 
-      // Filter by recent updates
-      if (pastDays) {
+      // Filter by recent updates (pastDays=0 means "today only" — explicit null check).
+      if (pastDays != null) {
         params.append('pastDays', pastDays.toString());
       }
 

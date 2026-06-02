@@ -113,7 +113,7 @@ class MenuHierarchy {
         tableCount: this._countTables(child),
         hasSubcategories: Object.keys(child.children).length > 0
       }))
-      .sort((a, b) => a.sortCode.localeCompare(b.sortCode));
+      .sort((a, b) => (a.sortCode || '').localeCompare(b.sortCode || ''));
   }
 
   /**
@@ -134,7 +134,7 @@ class MenuHierarchy {
         tableCount: this._countTables(child),
         hasChildren: Object.keys(child.children).length > 0
       }))
-      .sort((a, b) => a.sortCode.localeCompare(b.sortCode));
+      .sort((a, b) => (a.sortCode || '').localeCompare(b.sortCode || ''));
   }
 
   /**
@@ -189,7 +189,7 @@ class MenuHierarchy {
       result = result.filter(t => !t.discontinued);
     }
 
-    return result.sort((a, b) => b.updated.localeCompare(a.updated));
+    return result.sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
   }
 
   /**
@@ -250,7 +250,7 @@ class MenuHierarchy {
       .sort(([a], [b]) => b.localeCompare(a))
       .map(([name, tables]) => ({
         name,
-        tables: tables.sort((a, b) => a.sortCode.localeCompare(b.sortCode))
+        tables: tables.sort((a, b) => (a.sortCode || '').localeCompare(b.sortCode || ''))
       }));
   }
 
@@ -280,9 +280,12 @@ class MenuHierarchy {
       path: [subjectCode]
     });
 
-    // Navigate path to build remaining breadcrumbs
+    // Navigate path to build remaining breadcrumbs.
+    // Loop guard: stop walking the moment we drop off the known tree, so a
+    // stale or unknown subject code degrades to "shorter trail" instead of
+    // throwing on `undefined.children`.
     let node = this.hierarchy[subjectCode];
-    for (let i = 1; i < pathIds.length; i++) {
+    for (let i = 1; i < pathIds.length && node; i++) {
       node = node.children[pathIds[i]];
       if (node) {
         breadcrumbs.push({

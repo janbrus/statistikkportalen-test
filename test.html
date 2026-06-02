@@ -32,6 +32,10 @@
   <script src="js/menu-hierarchy.js"></script>
   <script src="js/synonyms.js"></script>
   <script src="js/search-enhanced.js"></script>
+  <!-- Loaded out of index.html order: only needed here for the isTimeDimension /
+       VarSelect pure-function tests. Safe to load standalone — it only declares
+       state and helpers; its DOM/runtime refs live inside method bodies. -->
+  <script src="js/variable-select-state.js"></script>
 
   <script>
     // Minimal test runner
@@ -190,6 +194,61 @@
     // SSB-specific /statbank/sq/ path IS matched
     assertEqual('/statbank/sq/ matched',
       detectSavedQueryId('https://www.ssb.no/statbank/table/14704?sq=30121434'), '30121434');
+
+    suite('formatNumber — Norwegian formatting');
+    assertEqual('null → dash', formatNumber(null), '-');
+    assertEqual('undefined → dash', formatNumber(undefined), '-');
+    assertEqual('empty string → dash', formatNumber(''), '-');
+    assertEqual('Infinity → dash', formatNumber(Infinity), '-');
+    assertEqual('non-numeric passes through', formatNumber('i alt'), 'i alt');
+    assertEqual('zero (auto-decimals)', formatNumber(0), '0');
+    assertEqual('thousands separator is space', formatNumber(1000000, 0), '1 000 000');
+    assertEqual('comma decimal + space thousands', formatNumber(1234.5, 1), '1 234,5');
+    assertEqual('auto-detects decimal precision', formatNumber(1234.5), '1 234,5');
+    assertEqual('negative number', formatNumber(-1234, 0), '-1 234');
+
+    suite('escapeHtml — XSS-safe');
+    assertEqual('escapes angle brackets', escapeHtml('<b>'), '&lt;b&gt;');
+    assertEqual('ampersand escaped first (no double-escape)', escapeHtml('a & b'), 'a &amp; b');
+    assertEqual('double quote', escapeHtml('"x"'), '&quot;x&quot;');
+    assertEqual('single quote', escapeHtml("'x'"), '&#39;x&#39;');
+    assertEqual('null → empty string', escapeHtml(null), '');
+    assertEqual('undefined → empty string', escapeHtml(undefined), '');
+    assertEqual('number coerced to string', escapeHtml(123), '123');
+
+    suite('extractTableTitle');
+    assertEqual('strips "id: " prefix', extractTableTitle('13760: Befolkning'), 'Befolkning');
+    assertEqual('leaves unprefixed label intact', extractTableTitle('Befolkning'), 'Befolkning');
+    assertEqual('empty falls back to unnamed', extractTableTitle(''), t('table.unnamed'));
+
+    suite('URLRouter — URL-safe base64 round-trip');
+    assertEqual('encode(null) → null', URLRouter.encode(null), null);
+    assertEqual('encode({}) → null', URLRouter.encode({}), null);
+    assertEqual('decode(null) → null', URLRouter.decode(null), null);
+    assertEqual('decode("") → null', URLRouter.decode(''), null);
+    const _rtObj = { Kjonn: ['1', '2'], Tid: 'top(5)' };
+    const _rtEnc = URLRouter.encode(_rtObj);
+    assert('encode returns a string', typeof _rtEnc === 'string');
+    assert('encoded output has no +, / or = chars', !/[+/=]/.test(_rtEnc));
+    assertEqual('decode(encode(obj)) round-trips',
+      JSON.stringify(URLRouter.decode(_rtEnc)), JSON.stringify(_rtObj));
+    const _uniObj = { region: 'Ærøskøbing Østfold æøå' };
+    assertEqual('round-trips unicode (UTF-8 safe)',
+      JSON.stringify(URLRouter.decode(URLRouter.encode(_uniObj))), JSON.stringify(_uniObj));
+    assertEqual('decode of garbage → null', URLRouter.decode('!!!not-base64!!!'), null);
+
+    suite('isTimeDimension — name heuristic (no metadata)');
+    VarSelect.tableMetadata = null;
+    assert('"Tid" is time', isTimeDimension('Tid'));
+    assert('contains "tid" is time', isTimeDimension('Tidsperiode'));
+    assert('"Kjonn" is not time', !isTimeDimension('Kjonn'));
+    assert('"ContentsCode" is not time', !isTimeDimension('ContentsCode'));
+
+    suite('isTimeDimension — role.time takes precedence');
+    VarSelect.tableMetadata = { role: { time: ['Maaned'] } };
+    assert('declared time dim is time', isTimeDimension('Maaned'));
+    assert('"Tid" not time when role.time excludes it', !isTimeDimension('Tid'));
+    VarSelect.tableMetadata = null; // restore
 
     // -----------------------------------------------------------------------
     showSummary();
