@@ -8,8 +8,41 @@
 // Store metadata for current table
 let tableMetadata = null;
 
-// Track last clicked item index per dimension for shift-click range selection
   /**
+   * Debounced URL update — avoids excessive history entries by batching
+   * selection changes within 500ms into one navigateTo call.
+   */
+  debouncedURLUpdate() {
+    clearTimeout(this.urlUpdateTimer);
+
+    this.urlUpdateTimer = setTimeout(() => {
+      // Guards: the user may have navigated away during the debounce window.
+      // Without these, the timer would rewrite whatever route they just landed
+      // on (front page, search, another table) with this table's encoded state.
+      if (AppState.currentView !== 'variables') return;
+      if (!AppState.selectedTable) return;
+      const metaTableId = VarSelect.tableMetadata?.extension?.px?.tableid;
+      if (metaTableId && metaTableId !== AppState.selectedTable.id) return;
+
+      const params = {};
+
+      const selection = getVariableSelection();
+      if (selection && Object.keys(selection).length > 0) {
+        params.v = URLRouter.encode(selection);
+      }
+
+      if (Object.keys(AppState.activeCodelistIds).length > 0) {
+        params.c = URLRouter.encode(AppState.activeCodelistIds);
+      }
+
+      URLRouter.navigateTo(
+        `variables/${AppState.selectedTable.id}`,
+        params,
+        false  // replaceState — don't create history entries per selection change
+      );
+    }, 500);
+  }
+};
 
 /**
  * Track active codelist per dimension.
