@@ -62,6 +62,22 @@ Applikasjonen kan tilpasses andre systemer som bruker PxWebApi v2, eksempelvis S
 5. Klikk «Hent data»
 6. Utforsk, roter og eksporter data
 
+## SEO-sider (pre-rendering)
+Appen er hash-rutet (`#topic/...`), som er usynlig for søkemotorer. `scripts/generate-seo-pages.mjs`
+genererer derfor statiske, crawlbare emnesider med pene URL-er
+(f.eks. `/okonomi/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/`) direkte i webroot,
+pluss `sitemap.xml` og `robots.txt`. Sidene er fulle app-skall: brukere som lander der
+overføres umiddelbart til den tilsvarende `#topic/...`-URL-en uten omlasting
+(via `window.__SEO_TOPIC_PATH__`-bootstrapen i `index.html`).
+
+Kjøres periodisk på serveren med cron (krever Node 18+):
+```
+15 4 * * 0 cd /sti/til/repo && node scripts/generate-seo-pages.mjs --webroot /sti/til/webroot --site https://statistikkportalen.no >> seo-gen.log 2>&1
+```
+Bruk `--dry-run` for å se hva som ville blitt skrevet. Scriptet sletter kun filer det selv
+har generert (sporet i `{webroot}/.seo-manifest.json`), og avbryter uten å røre webroot
+ved API-feil. De genererte filene skal ikke sjekkes inn i git.
+
 ## Systemkrav
 - Moderne nettleser (Chrome, Firefox, Safari, Edge, Vivaldi)
 - JavaScript aktivert

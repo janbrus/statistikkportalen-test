@@ -3,6 +3,9 @@
  *
  * This file contains all configurable settings for the application.
  * Modify these values to change the API endpoint or other settings.
+ *
+ * NB: scripts/generate-seo-pages.mjs leser også denne filen (via node:vm)
+ * for API-endepunkt, appnavn og kildeinfo — hold strukturen kompatibel.
  */
 
 const AppConfig = {
@@ -127,7 +130,13 @@ const AppConfig = {
     errorAutoHideMs: 10000,
 
     // Show discontinued tables by default in search and topic views
-    showDiscontinuedByDefault: false
+    showDiscontinuedByDefault: false,
+
+    // Antall stinivåer under et emne som vises som navigasjonskort før
+    // tabellisten vises i emnevisningen. SSB: 2 (undertema + kategori).
+    // Andre PxWebApi-instanser med grunnere hierarki kan bruke lavere verdi;
+    // 0 viser tabellisten allerede på emnenivå.
+    topicCardDepth: 2
   },
 
   /**

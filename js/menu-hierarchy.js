@@ -39,6 +39,9 @@ class MenuHierarchy {
 
   /**
    * Add a single path to the hierarchy tree
+   *
+   * NB: scripts/generate-seo-pages.mjs har en duplikat av denne logikken —
+   * endres tre-strukturen her, må den oppdateres der også.
    */
   _addPathToHierarchy(path, table) {
     if (path.length === 0) return;
@@ -117,16 +120,15 @@ class MenuHierarchy {
   }
 
   /**
-   * Get categories for a subtopic (level 3+ nodes)
+   * Get child nodes at any path depth, as card-friendly summaries.
+   * Used by the topic view for all card levels below the subject level
+   * (how many levels show cards is governed by AppConfig.ui.topicCardDepth).
    */
-  getCategoriesForSubtopic(subjectCode, subtopicId) {
-    const subject = this.hierarchy[subjectCode];
-    if (!subject) return [];
+  getChildrenForPath(pathIds) {
+    const node = this.getNodeForPath(pathIds);
+    if (!node) return [];
 
-    const subtopic = subject.children[subtopicId];
-    if (!subtopic) return [];
-
-    return Object.values(subtopic.children)
+    return Object.values(node.children)
       .map(child => ({
         id: child.id,
         label: child.label,
@@ -135,6 +137,13 @@ class MenuHierarchy {
         hasChildren: Object.keys(child.children).length > 0
       }))
       .sort((a, b) => a.sortCode.localeCompare(b.sortCode));
+  }
+
+  /**
+   * Get categories for a subtopic (level 3+ nodes)
+   */
+  getCategoriesForSubtopic(subjectCode, subtopicId) {
+    return this.getChildrenForPath([subjectCode, subtopicId]);
   }
 
   /**

@@ -1,0 +1,651 @@
+#!/usr/bin/env node
+/**
+ * SEO-sidegenerator for Statistikkportalen.
+ *
+ * Genererer statiske, crawlbare emnesider (pene URL-er som
+ * /okonomi/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/) i webroot,
+ * pluss sitemap.xml og robots.txt. Hver side er et fullt app-skall basert på
+ * den deployede index.html: crawlere ser statisk innhold (brodsmuler,
+ * underemner, tabelliste) og JSON-LD strukturerte data (BreadcrumbList +
+ * DataCatalog/Dataset for Google Dataset Search), mens appen ved lasting
+ * bytter URL til den kanoniske hash-ruten (#topic/...) via
+ * window.__SEO_TOPIC_PATH__ (se bootstrap-snutten i index.html).
+ *
+ * API-endepunkt, sidestørrelse, appnavn og kildeinfo leses fra appens egne
+ * js/config.js og js/subjects.js (via node:vm) — én kilde til sannhet, og
+ * scriptet fungerer uendret for andre PxWebApi-instanser.
+ *
+ * Kjøres periodisk på serveren (cron), f.eks. ukentlig:
+ *   15 4 * * 0 cd /sti/til/repo && node scripts/generate-seo-pages.mjs \
+ *     --webroot /sti/til/webroot --site https://statistikkportalen.no >> seo-gen.log 2>&1
+ *
+ * Krever Node 18+ (global fetch). Ingen npm-avhengigheter.
+ *
+ * Sikkerhet: scriptet sletter kun filer/mapper det selv har skrevet, sporet i
+ * {webroot}/.seo-manifest.json. Ved API-feil eller mistenkelig lite data
+ * avbrytes kjøringen uten å røre webroot.
+ *
+ * NB: tre-byggingen i buildHierarchy() er en duplikat av
+ * MenuHierarchy._addPathToHierarchy() i js/menu-hierarchy.js — endres
+ * tre-strukturen der, må den oppdateres her også.
+ */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+
+const MIN_TABLE_COUNT = 5000; // sanity-terskel: færre tabeller = trolig API-feil (overstyres med --min-tables)
+
+// Navn som aldri kan brukes som mappe på toppnivå i webroot
+const RESERVED_TOP_LEVEL = new Set([
+  'js', 'css', 'scripts', 'assets', 'img', 'images', 'fonts',
+  'index.html', 'test.html', 'api-explorer.html',
+  'robots.txt', 'sitemap.xml', 'favicon.ico',
+]);
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+function parseArgs(argv) {
+  const args = { webroot: null, site: null, dryRun: false, minTables: MIN_TABLE_COUNT };
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--webroot') args.webroot = argv[++i];
+    else if (a === '--site') args.site = argv[++i];
+    else if (a === '--min-tables') args.minTables = parseInt(argv[++i], 10);
+    else if (a === '--dry-run') args.dryRun = true;
+    else {
+      console.error(`Ukjent argument: ${a}`);
+      process.exit(2);
+    }
+  }
+  if (!args.webroot || !args.site || !Number.isFinite(args.minTables)) {
+    console.error('Bruk: node scripts/generate-seo-pages.mjs --webroot <sti> --site <https://...> [--min-tables <antall>] [--dry-run]');
+    process.exit(2);
+  }
+  args.webroot = path.resolve(args.webroot);
+  args.site = args.site.replace(/\/+$/, '');
+  return args;
+}
+
+// ---------------------------------------------------------------------------
+// Datainnhenting
+// ---------------------------------------------------------------------------
+
+async function fetchTablesPage(appConfig, pageNumber) {
+  const params = new URLSearchParams({
+    lang: apiLang(appConfig),
+    pageSize: String(appConfig.limits?.tablePageBatchSize || 10000),
+    includeDiscontinued: 'true',
+  });
+  if (pageNumber > 1) params.set('pageNumber', String(pageNumber));
+  const url = `${appConfig.apiBaseUrl}/tables?${params}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API-feil ${res.status} for ${url}`);
+  return res.json();
+}
+
+async function fetchAllTables(appConfig, minTables) {
+  const first = await fetchTablesPage(appConfig, 1);
+  const tables = first.tables ? [...first.tables] : [];
+  const totalPages = first.page ? first.page.totalPages : 1;
+  console.log(`[SEO] Hentet side 1/${totalPages} (${tables.length} tabeller)`);
+  for (let p = 2; p <= totalPages; p++) {
+    const page = await fetchTablesPage(appConfig, p);
+    tables.push(...(page.tables || []));
+    console.log(`[SEO] Hentet side ${p}/${totalPages} (totalt ${tables.length} tabeller)`);
+  }
+  if (tables.length < minTables) {
+    throw new Error(`Bare ${tables.length} tabeller fra API-et (forventet minst ${minTables}) — avbryter uten å røre webroot.`);
+  }
+  return tables;
+}
+
+// ---------------------------------------------------------------------------
+// App-konfigurasjon (gjenbrukt fra appens egne filer via node:vm)
+// ---------------------------------------------------------------------------
+
+/** Kjør en browser-global appfil i en sandkasse og les ut window.{key}. */
+function loadBrowserGlobal(file, key) {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'js', file), 'utf8');
+  const sandbox = { window: {} };
+  vm.runInNewContext(src, sandbox);
+  const value = sandbox.window[key];
+  if (!value) throw new Error(`Klarte ikke å lese ${key} fra js/${file}`);
+  return value;
+}
+
+function loadAppConfig() {
+  const cfg = loadBrowserGlobal('config.js', 'AppConfig');
+  if (!cfg.apiBaseUrl || !cfg.app?.name || !cfg.source) {
+    throw new Error('AppConfig fra js/config.js mangler apiBaseUrl, app.name eller source');
+  }
+  return cfg;
+}
+
+function loadSubjectConfig() {
+  const cfg = loadBrowserGlobal('subjects.js', 'SubjectConfig');
+  if (!cfg.subjectGroups || !cfg.subjectNames) {
+    throw new Error('SubjectConfig fra js/subjects.js mangler subjectGroups/subjectNames');
+  }
+  return cfg;
+}
+
+/** API-språkkoden for standardspråket (SSB: 'no'). */
+function apiLang(appConfig) {
+  const langs = appConfig.languages || [];
+  return (langs.find(l => l.code === appConfig.defaultLanguage) || langs[0])?.apiLang || 'no';
+}
+
+// ---------------------------------------------------------------------------
+// Hierarki (duplikat av MenuHierarchy._addPathToHierarchy i js/menu-hierarchy.js)
+// ---------------------------------------------------------------------------
+
+function buildHierarchy(tables) {
+  const hierarchy = {};
+  for (const table of tables) {
+    if (!table.paths || table.paths.length === 0) continue;
+    for (const tablePath of table.paths) {
+      if (tablePath.length === 0) continue;
+      const subjectCode = tablePath[0].id;
+      if (!hierarchy[subjectCode]) {
+        hierarchy[subjectCode] = {
+          id: subjectCode,
+          label: tablePath[0].label,
+          sortCode: tablePath[0].sortCode,
+          children: {},
+          tables: [],
+        };
+      }
+      let node = hierarchy[subjectCode];
+      for (let i = 1; i < tablePath.length; i++) {
+        const seg = tablePath[i];
+        if (!node.children[seg.id]) {
+          node.children[seg.id] = {
+            id: seg.id,
+            label: seg.label,
+            sortCode: seg.sortCode,
+            children: {},
+            tables: [],
+          };
+        }
+        node = node.children[seg.id];
+      }
+      node.tables.push(table);
+    }
+  }
+  return hierarchy;
+}
+
+// ---------------------------------------------------------------------------
+// Slugs
+// ---------------------------------------------------------------------------
+
+function slugify(label) {
+  return label
+    .toLowerCase()
+    .replace(/æ/g, 'ae')
+    .replace(/ø/g, 'o')
+    .replace(/å/g, 'a')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // fjern diakritiske tegn (é→e, ü→u)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Unik slug innenfor én foreldermappe; kollisjoner får -{id}-suffiks. */
+function uniqueSlug(label, nodeId, usedSlugs) {
+  let slug = slugify(label) || nodeId.toLowerCase();
+  if (usedSlugs.has(slug)) slug = `${slug}-${slugify(nodeId)}`;
+  let candidate = slug;
+  let n = 2;
+  while (usedSlugs.has(candidate)) candidate = `${slug}-${n++}`;
+  usedSlugs.add(candidate);
+  return candidate;
+}
+
+// ---------------------------------------------------------------------------
+// Sidetre: gruppe → emne → underemner (alle dybder)
+// ---------------------------------------------------------------------------
+
+function dedupeActiveTables(tables) {
+  const seen = new Set();
+  const out = [];
+  for (const t of tables) {
+    if (t.discontinued) continue;
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    out.push(t);
+  }
+  return out;
+}
+
+function subtreeStats(node, stats = { ids: new Set(), discontinued: new Set(), lastUpdated: null }) {
+  for (const t of node.tables) {
+    (t.discontinued ? stats.discontinued : stats.ids).add(t.id);
+    if (!t.discontinued && t.updated && (!stats.lastUpdated || t.updated > stats.lastUpdated)) {
+      stats.lastUpdated = t.updated;
+    }
+  }
+  for (const child of Object.values(node.children)) subtreeStats(child, stats);
+  return stats;
+}
+
+/**
+ * Bygger flat liste av sider som skal genereres. Hver side:
+ * { dir, url, hashPath, label, parentLabels, breadcrumbs, children, tables,
+ *   discontinuedCount, activeCount, lastUpdated }
+ */
+function buildPages(subjectConfig, hierarchy) {
+  const pages = [];
+
+  function addNode(node, label, dir, hashPath, breadcrumbs, parentLabels) {
+    const stats = subtreeStats(node);
+    const activeCount = stats.ids.size;
+    const childNodes = Object.values(node.children)
+      .sort((a, b) => String(a.sortCode).localeCompare(String(b.sortCode)));
+
+    if (activeCount === 0 && childNodes.length === 0) return null; // tom node — hopp over
+
+    const usedSlugs = new Set();
+    const children = [];
+    for (const child of childNodes) {
+      const childStats = subtreeStats(child);
+      if (childStats.ids.size === 0 && Object.keys(child.children).length === 0) continue;
+      const slug = uniqueSlug(child.label, child.id, usedSlugs);
+      const childPage = addNode(
+        child, child.label, `${dir}/${slug}`, [...hashPath, child.id],
+        [...breadcrumbs, { label, dir }], [...parentLabels, label]
+      );
+      if (childPage) children.push({ label: child.label, dir: childPage.dir, tableCount: childStats.ids.size });
+    }
+
+    const page = {
+      dir,
+      hashPath,
+      label,
+      parentLabels,
+      breadcrumbs,
+      children,
+      tables: dedupeActiveTables(node.tables).sort((a, b) => String(b.updated || '').localeCompare(String(a.updated || ''))),
+      discontinuedCount: node.tables.filter(t => t.discontinued).length,
+      activeCount,
+      lastUpdated: stats.lastUpdated,
+    };
+    pages.push(page);
+    return page;
+  }
+
+  const usedTopSlugs = new Set(RESERVED_TOP_LEVEL);
+  for (const group of Object.values(subjectConfig.subjectGroups)) {
+    // Gruppe-id-ene (arbeid, befolkning, ...) er allerede stabile ascii-slugs
+    const groupSlug = uniqueSlug(group.id, group.id, usedTopSlugs);
+    const usedSubjectSlugs = new Set();
+    const groupChildren = [];
+    let groupLastUpdated = null;
+    let groupActive = 0;
+
+    for (const subjectCode of group.subjects) {
+      const node = hierarchy[subjectCode];
+      if (!node) continue;
+      const label = subjectConfig.subjectNames[subjectCode] || node.label;
+      const slug = uniqueSlug(label, subjectCode, usedSubjectSlugs);
+      const subjectPage = addNode(
+        node, label, `${groupSlug}/${slug}`, [subjectCode],
+        [{ label: group.label, dir: groupSlug }], [group.label]
+      );
+      if (!subjectPage) continue;
+      groupChildren.push({ label, dir: subjectPage.dir, tableCount: subjectPage.activeCount });
+      groupActive += subjectPage.activeCount;
+      if (subjectPage.lastUpdated && (!groupLastUpdated || subjectPage.lastUpdated > groupLastUpdated)) {
+        groupLastUpdated = subjectPage.lastUpdated;
+      }
+    }
+
+    if (groupChildren.length === 0) continue;
+    pages.push({
+      dir: groupSlug,
+      hashPath: [group.id],
+      label: group.label,
+      parentLabels: [],
+      breadcrumbs: [],
+      children: groupChildren,
+      tables: [],
+      discontinuedCount: 0,
+      activeCount: groupActive,
+      lastUpdated: groupLastUpdated,
+    });
+  }
+
+  return pages;
+}
+
+// ---------------------------------------------------------------------------
+// HTML-generering
+// ---------------------------------------------------------------------------
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str);
+}
+
+function loadTemplate(webroot) {
+  const templatePath = path.join(webroot, 'index.html');
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`Fant ikke ${templatePath} — webroot må inneholde den deployede appen.`);
+  }
+  const template = fs.readFileSync(templatePath, 'utf8');
+  if (!template.includes('__SEO_TOPIC_PATH__')) {
+    throw new Error('Deployet index.html mangler __SEO_TOPIC_PATH__-bootstrapen — deploy appversjonen med SEO-støtte (v1.4.1+) først.');
+  }
+  return template;
+}
+
+/** Erstatt med regex og feil høylytt hvis ankeret ikke finnes i malen. */
+function mustReplace(html, regex, replacement, what) {
+  if (!regex.test(html)) {
+    throw new Error(`Fant ikke anker for ${what} i index.html-malen — malen har endret seg, oppdater scriptet.`);
+  }
+  return html.replace(regex, replacement);
+}
+
+function buildDescription(page, appConfig) {
+  const n = page.activeCount;
+  const sourceName = appConfig.source.nameFull || appConfig.source.name;
+  let desc = `Statistikk om ${page.label.toLowerCase()}: ${n} ${n === 1 ? 'tabell' : 'tabeller'} fra ${sourceName}.`;
+  if (page.children.length > 0) {
+    let childPart = page.children.map(c => c.label).join(', ');
+    if (childPart.length > 120) childPart = childPart.slice(0, 117).replace(/,?\s+\S*$/, '') + '…';
+    desc += ` Omfatter ${childPart}.`;
+  }
+  return desc;
+}
+
+function buildContentHtml(page, appConfig) {
+  const parts = [];
+
+  // Brodsmuler (pene URL-er oppover, gjeldende side som tekst)
+  const crumbs = [`<a href="/">${escapeHtml(appConfig.app.name)}</a>`];
+  for (const crumb of page.breadcrumbs) {
+    crumbs.push(`<a href="/${escapeAttr(crumb.dir)}/">${escapeHtml(crumb.label)}</a>`);
+  }
+  crumbs.push(`<span>${escapeHtml(page.label)}</span>`);
+  parts.push(`<nav class="breadcrumbs" aria-label="Brodsmulesti">${crumbs.join(' › ')}</nav>`);
+
+  parts.push(`<h1>${escapeHtml(page.label)}</h1>`);
+  parts.push(`<p>${escapeHtml(buildDescription(page, appConfig))}</p>`);
+
+  if (page.children.length > 0) {
+    parts.push('<h2>Underemner</h2>');
+    const items = page.children.map(c =>
+      `<li><a href="/${escapeAttr(c.dir)}/">${escapeHtml(c.label)}</a> (${c.tableCount} ${c.tableCount === 1 ? 'tabell' : 'tabeller'})</li>`
+    );
+    parts.push(`<ul>${items.join('\n')}</ul>`);
+  }
+
+  if (page.tables.length > 0) {
+    parts.push('<h2>Tabeller</h2>');
+    const items = page.tables.map(t => {
+      const updated = t.updated ? ` <small>(oppdatert ${escapeHtml(String(t.updated).slice(0, 10))})</small>` : '';
+      return `<li><a href="/#variables/${escapeAttr(t.id)}">${escapeHtml(t.label)}</a>${updated}</li>`;
+    });
+    parts.push(`<ul>${items.join('\n')}</ul>`);
+  }
+
+  if (page.discontinuedCount > 0) {
+    parts.push(`<p><small>${page.discontinuedCount} avsluttede tabeller vises ikke her, men er tilgjengelige i portalen.</small></p>`);
+  }
+
+  return parts.join('\n      ');
+}
+
+/**
+ * Strukturerte data (schema.org JSON-LD): BreadcrumbList for alle sider,
+ * pluss DataCatalog med Dataset per tabell (trigget av Google Dataset Search)
+ * på sider som lister tabeller direkte.
+ */
+function buildJsonLd(page, site, appConfig) {
+  const url = `${site}/${page.dir}/`;
+  const source = appConfig.source;
+  const graph = [];
+
+  const crumbItems = [
+    { name: appConfig.app.name, item: `${site}/` },
+    ...page.breadcrumbs.map(c => ({ name: c.label, item: `${site}/${c.dir}/` })),
+    { name: page.label, item: url },
+  ];
+  graph.push({
+    '@type': 'BreadcrumbList',
+    itemListElement: crumbItems.map((c, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: c.name,
+      item: c.item,
+    })),
+  });
+
+  if (page.tables.length > 0) {
+    const creator = {
+      '@type': 'Organization',
+      name: source.nameFull || source.name,
+      url: source.url,
+    };
+    graph.push({
+      '@type': 'DataCatalog',
+      name: `${page.label} – ${appConfig.app.name}`,
+      url,
+      ...(source.licenseUrl ? { license: source.licenseUrl } : {}),
+      dataset: page.tables.map(t => ({
+        '@type': 'Dataset',
+        name: t.label,
+        description: `${t.label}. Statistikktabell ${t.id} fra ${creator.name}.`,
+        identifier: t.id,
+        url: `${site}/#variables/${t.id}`,
+        ...(t.updated ? { dateModified: String(t.updated).slice(0, 10) } : {}),
+        ...(source.licenseUrl ? { license: source.licenseUrl } : {}),
+        creator,
+      })),
+    });
+  }
+
+  return { '@context': 'https://schema.org', '@graph': graph };
+}
+
+function renderPage(template, page, site, appConfig) {
+  const url = `${site}/${page.dir}/`;
+  const title = [page.label, ...[...page.parentLabels].reverse(), appConfig.app.name].join(' – ');
+  const description = buildDescription(page, appConfig);
+
+  let html = template;
+
+  html = mustReplace(html, /<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`, '<title>');
+  html = mustReplace(
+    html,
+    /<meta name="description" content="[^"]*" id="meta-description">/,
+    `<meta name="description" content="${escapeAttr(description)}" id="meta-description">`,
+    'meta description'
+  );
+  html = mustReplace(html, /<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${escapeAttr(url)}">`, 'canonical');
+  html = mustReplace(html, /<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escapeAttr(title)}">`, 'og:title');
+  html = mustReplace(html, /<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${escapeAttr(description)}">`, 'og:description');
+  html = mustReplace(html, /<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${escapeAttr(url)}">`, 'og:url');
+
+  // Relative asset-stier → absolutte (sidene ligger 1–4 mapper dypt)
+  html = html.replace(/href="css\//g, 'href="/css/').replace(/src="js\//g, 'src="/js/');
+
+  // JSON-LD strukturerte data ("<" escapes så "</script>" i labels ikke kan bryte ut)
+  const jsonLd = JSON.stringify(buildJsonLd(page, site, appConfig)).replace(/</g, '\\u003c');
+  html = mustReplace(
+    html,
+    /<\/head>/,
+    `  <script type="application/ld+json">${jsonLd}</script>\n</head>`,
+    '</head> (JSON-LD)'
+  );
+
+  // Embed topic-path før første app-script
+  html = mustReplace(
+    html,
+    /(<script src="\/js\/version\.js")/,
+    `<script>window.__SEO_TOPIC_PATH__=${JSON.stringify(page.hashPath)};</script>\n  $1`,
+    'script-injeksjon (js/version.js)'
+  );
+
+  // Statisk crawlbart innhold i #content
+  const contentRegex = /(<div id="content">)([\s\S]*?)(<\/div>)/;
+  const match = html.match(contentRegex);
+  if (!match) throw new Error('Fant ikke <div id="content"> i malen.');
+  if (match[2].length > 500) {
+    throw new Error('<div id="content"> i malen har uventet mye innhold — strukturen kan ha endret seg, oppdater scriptet.');
+  }
+  html = html.replace(contentRegex, `$1\n      ${buildContentHtml(page, appConfig)}\n    $3`);
+
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// sitemap.xml / robots.txt
+// ---------------------------------------------------------------------------
+
+function escapeXml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function buildSitemap(pages, site) {
+  const entries = [{ loc: `${site}/`, lastmod: null }];
+  for (const page of pages) {
+    entries.push({
+      loc: `${site}/${page.dir}/`,
+      lastmod: page.lastUpdated ? String(page.lastUpdated).slice(0, 10) : null,
+    });
+  }
+  const urls = entries.map(e => {
+    const lastmod = e.lastmod ? `\n    <lastmod>${e.lastmod}</lastmod>` : '';
+    return `  <url>\n    <loc>${escapeXml(e.loc)}</loc>${lastmod}\n  </url>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
+}
+
+function buildRobots(site) {
+  return `User-agent: *\nAllow: /\n\nSitemap: ${site}/sitemap.xml\n`;
+}
+
+// ---------------------------------------------------------------------------
+// Skriving og opprydding (kun manifest-eide slettinger)
+// ---------------------------------------------------------------------------
+
+const MANIFEST_NAME = '.seo-manifest.json';
+
+function loadManifest(webroot) {
+  const p = path.join(webroot, MANIFEST_NAME);
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    console.warn('[SEO] Klarte ikke å lese eksisterende manifest — hopper over opprydding.');
+    return null;
+  }
+}
+
+function atomicWrite(filePath, content) {
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, content, 'utf8');
+  fs.renameSync(tmp, filePath);
+}
+
+function main_write(webroot, site, appConfig, pages, oldManifest, dryRun) {
+  const newDirs = pages.map(p => p.dir).sort();
+  const sitemap = buildSitemap(pages, site);
+
+  // robots.txt: skriv kun hvis fraværende eller eid av dette scriptet
+  const robotsPath = path.join(webroot, 'robots.txt');
+  const robotsOwned = !fs.existsSync(robotsPath) || (oldManifest?.files || []).includes('robots.txt');
+  const newFiles = ['sitemap.xml'];
+  if (robotsOwned) newFiles.push('robots.txt');
+  else console.warn(`[SEO] robots.txt finnes fra før og eies ikke av scriptet — legg til "Sitemap: ${site}/sitemap.xml" manuelt.`);
+
+  // Slettekandidater: mapper fra forrige kjøring som ikke lenger genereres
+  const oldDirs = oldManifest?.dirs || [];
+  const staleDirs = oldDirs.filter(d => !newDirs.includes(d));
+
+  if (dryRun) {
+    console.log(`\n[SEO] DRY RUN — ingen filer skrives.`);
+    console.log(`[SEO] Ville skrevet ${newDirs.length} sider + sitemap.xml${robotsOwned ? ' + robots.txt' : ''}:`);
+    for (const d of newDirs) console.log(`  /${d}/`);
+    if (staleDirs.length) {
+      console.log(`[SEO] Ville slettet ${staleDirs.length} utdaterte mapper:`);
+      for (const d of staleDirs) console.log(`  /${d}/`);
+    }
+    const sample = pages.find(p => p.hashPath.length >= 3) || pages[pages.length - 1];
+    console.log(`\n[SEO] Eksempelside (/${sample.dir}/):\n`);
+    console.log(renderPage(loadTemplate(webroot), sample, site, appConfig));
+    return;
+  }
+
+  // 1) Skriv alle nye sider
+  const template = loadTemplate(webroot);
+  for (const page of pages) {
+    const dirPath = path.join(webroot, page.dir);
+    fs.mkdirSync(dirPath, { recursive: true });
+    atomicWrite(path.join(dirPath, 'index.html'), renderPage(template, page, site, appConfig));
+  }
+  console.log(`[SEO] Skrev ${pages.length} sider.`);
+
+  // 2) sitemap + robots
+  atomicWrite(path.join(webroot, 'sitemap.xml'), sitemap);
+  if (robotsOwned) atomicWrite(robotsPath, buildRobots(site));
+
+  // 3) Rydd opp utdaterte mapper (kun index.html + tomme mapper, aldri rekursivt)
+  for (const dir of staleDirs.sort((a, b) => b.split('/').length - a.split('/').length)) {
+    const indexPath = path.join(webroot, dir, 'index.html');
+    try { fs.unlinkSync(indexPath); } catch { /* allerede borte */ }
+    try { fs.rmdirSync(path.join(webroot, dir)); } catch { /* ikke tom — rører den ikke */ }
+  }
+  if (staleDirs.length) console.log(`[SEO] Ryddet ${staleDirs.length} utdaterte mapper.`);
+
+  // 4) Manifest sist
+  atomicWrite(path.join(webroot, MANIFEST_NAME), JSON.stringify({
+    generatedAt: new Date().toISOString(),
+    site,
+    dirs: newDirs,
+    files: newFiles,
+  }, null, 2));
+  console.log(`[SEO] Ferdig: ${pages.length} sider, sitemap.xml${robotsOwned ? ', robots.txt' : ''}.`);
+}
+
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const args = parseArgs(process.argv);
+
+  // Verifiser malen tidlig så vi feiler før API-kallene
+  loadTemplate(args.webroot);
+
+  const appConfig = loadAppConfig();
+  const subjectConfig = loadSubjectConfig();
+  console.log(`[SEO] API: ${appConfig.apiBaseUrl} (${appConfig.app.name})`);
+
+  const tables = await fetchAllTables(appConfig, args.minTables);
+  const hierarchy = buildHierarchy(tables);
+  const pages = buildPages(subjectConfig, hierarchy);
+  console.log(`[SEO] Bygde ${pages.length} sider fra ${tables.length} tabeller.`);
+
+  const oldManifest = loadManifest(args.webroot);
+  main_write(args.webroot, args.site, appConfig, pages, oldManifest, args.dryRun);
+}
+
+main().catch(err => {
+  console.error(`[SEO] FEIL: ${err.message}`);
+  process.exit(1);
+});

@@ -9,6 +9,9 @@
  *
  * For en annen instans (f.eks. SCB): bytt ut denne filen med tilsvarende
  * struktur for den aktuelle statistikkbanken.
+ *
+ * NB: scripts/generate-seo-pages.mjs leser også denne filen (via node:vm)
+ * for å generere statiske SEO-sider — hold strukturen kompatibel.
  */
 const SubjectConfig = {
   subjectGroups: {

@@ -55,17 +55,21 @@ async function renderTopicView(container) {
     updatePageTitle(lastCrumb ? [lastCrumb.label] : [t('nav.subjects')]);
   }
 
+  // Antall stinivåer som vises som navigasjonskort før tabellisten
+  // (konfigurerbart per instans; SSB-standard er 2)
+  const cardDepth = AppConfig.ui?.topicCardDepth ?? 2;
+
   if (isGroupId && path.length === 1) {
     // Level 1: Show subjects in a group (cards)
     _topicRenderGroupSubjects(container, mh, firstId);
-  } else if (path.length === 1) {
+  } else if (path.length === 1 && cardDepth >= 1) {
     // Level 2: Show subtopics for a subject
     _topicRenderSubtopics(container, mh, path);
-  } else if (path.length === 2) {
-    // Level 3: Categories or table list
+  } else if (path.length <= cardDepth) {
+    // Card levels below subject: categories or fall through to table list
     _topicRenderCategories(container, mh, path);
   } else {
-    // Level 4+: Table list with hierarchy
+    // Below cardDepth: Table list with hierarchy
     _topicRenderTables(container, mh, path);
   }
 }
@@ -160,11 +164,11 @@ function _topicRenderSubtopics(container, mh, path) {
 }
 
 /**
- * Level 3: Categories or fall through to table list
+ * Card levels below the subject level (any depth up to topicCardDepth):
+ * categories as cards, or fall through to table list
  */
 function _topicRenderCategories(container, mh, path) {
-  const [subjectCode, subtopicId] = path;
-  const categories = mh.getCategoriesForSubtopic(subjectCode, subtopicId);
+  const categories = mh.getChildrenForPath(path);
   const breadcrumbs = mh.getBreadcrumbs(path);
 
   // If no subcategories, go directly to table list

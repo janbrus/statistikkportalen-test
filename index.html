@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Statistikkportalen</title>
   <meta name="description" content="Et uoffisielt verktøy for bedre tilgang til SSBs statistikkbank og åpne data." id="meta-description">
+  <link rel="canonical" href="https://statistikkportalen.no/">
+  <meta property="og:title" content="Statistikkportalen">
+  <meta property="og:description" content="Et uoffisielt verktøy for bedre tilgang til SSBs statistikkbank og åpne data.">
+  <meta property="og:url" content="https://statistikkportalen.no/">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="nb_NO">
 
   <!-- Analytics -->
   <script defer src="https://stats.statistikkportalen.no/script.js" data-website-id="e8e31e32-aa40-4865-8acb-3311b8a374e9" data-domains="statistikkportalen.no" data-do-not-track="true"></script>
@@ -55,33 +61,33 @@
   <!-- JavaScript - Load in correct order -->
   <!-- Cache busting: ?v= must match VERSION in version.js. When bumping VERSION, update all ?v= here too. -->
   <script src="js/version.js"></script>
-  <script src="js/config.js?v=1.4.0"></script>
-  <script src="js/translations.js?v=1.4.0"></script>
-  <script src="js/cache.js?v=1.4.0"></script>
-  <script src="js/api.js?v=1.4.0"></script>
-  <script src="js/utils.js?v=1.4.0"></script>
-  <script src="js/router.js?v=1.4.0"></script>
-  <script src="js/subjects.js?v=1.4.0"></script>
-  <script src="js/menu-hierarchy.js?v=1.4.0"></script>
-  <script src="js/browser-state.js?v=1.4.0"></script>
-  <script src="js/menu-bar.js?v=1.4.0"></script>
-  <script src="js/front-page.js?v=1.4.0"></script>
-  <script src="js/synonyms.js?v=1.4.0"></script>
-  <script src="js/search-enhanced.js?v=1.4.0"></script>
-  <script src="js/search-view.js?v=1.4.0"></script>
-  <script src="js/topic-view.js?v=1.4.0"></script>
-  <script src="js/variable-select-state.js?v=1.4.0"></script>
-  <script src="js/variable-select-status.js?v=1.4.0"></script>
-  <script src="js/variable-select-codelists.js?v=1.4.0"></script>
-  <script src="js/variable-select-render.js?v=1.4.0"></script>
-  <script src="js/variable-select-events.js?v=1.4.0"></script>
-  <script src="js/variable-select-api.js?v=1.4.0"></script>
-  <script src="js/variable-select.js?v=1.4.0"></script>
-  <script src="js/table-display.js?v=1.4.0"></script>
-  <script src="js/table-metadata.js?v=1.4.0"></script>
-  <script src="js/table-save-query.js?v=1.4.0"></script>
-  <script src="js/table-rotation.js?v=1.4.0"></script>
-  <script src="js/export.js?v=1.4.0"></script>
+  <script src="js/config.js?v=1.4.1"></script>
+  <script src="js/translations.js?v=1.4.1"></script>
+  <script src="js/cache.js?v=1.4.1"></script>
+  <script src="js/api.js?v=1.4.1"></script>
+  <script src="js/utils.js?v=1.4.1"></script>
+  <script src="js/router.js?v=1.4.1"></script>
+  <script src="js/subjects.js?v=1.4.1"></script>
+  <script src="js/menu-hierarchy.js?v=1.4.1"></script>
+  <script src="js/browser-state.js?v=1.4.1"></script>
+  <script src="js/menu-bar.js?v=1.4.1"></script>
+  <script src="js/front-page.js?v=1.4.1"></script>
+  <script src="js/synonyms.js?v=1.4.1"></script>
+  <script src="js/search-enhanced.js?v=1.4.1"></script>
+  <script src="js/search-view.js?v=1.4.1"></script>
+  <script src="js/topic-view.js?v=1.4.1"></script>
+  <script src="js/variable-select-state.js?v=1.4.1"></script>
+  <script src="js/variable-select-status.js?v=1.4.1"></script>
+  <script src="js/variable-select-codelists.js?v=1.4.1"></script>
+  <script src="js/variable-select-render.js?v=1.4.1"></script>
+  <script src="js/variable-select-events.js?v=1.4.1"></script>
+  <script src="js/variable-select-api.js?v=1.4.1"></script>
+  <script src="js/variable-select.js?v=1.4.1"></script>
+  <script src="js/table-display.js?v=1.4.1"></script>
+  <script src="js/table-metadata.js?v=1.4.1"></script>
+  <script src="js/table-save-query.js?v=1.4.1"></script>
+  <script src="js/table-rotation.js?v=1.4.1"></script>
+  <script src="js/export.js?v=1.4.1"></script>
 
   <!-- Application Initialization -->
   <script>
@@ -93,7 +99,11 @@
         ? (rawTagline[currentLanguage] ?? rawTagline['nb'] ?? '')
         : rawTagline;
 
-      document.getElementById('meta-description').setAttribute('content', appTagline);
+      // Pre-rendrede SEO-sider (se scripts/generate-seo-pages.mjs) har en unik
+      // beskrivelse som må bevares i Googlebots rendrede snapshot.
+      if (!window.__SEO_TOPIC_PATH__) {
+        document.getElementById('meta-description').setAttribute('content', appTagline);
+      }
       document.getElementById('header-subtitle').textContent = appTagline;
 
       const dataFromEl = document.getElementById('footer-data-from');
@@ -112,7 +122,11 @@
       const appName = AppConfig.app?.name || 'Statistikkportalen';
       const src = AppConfig.source || {};
 
-      document.title = appName;
+      // Pre-rendrede SEO-sider har en unik tittel som ikke skal overskrives
+      // med den generiske (updatePageTitle setter emnespesifikk tittel senere).
+      if (!window.__SEO_TOPIC_PATH__) {
+        document.title = appName;
+      }
       document.getElementById('header-home-link').textContent = appName;
 
       // Footer source links (language-neutral)
@@ -192,6 +206,25 @@
         logger.log('[App] Cache cleared by user');
         window.location.reload();
       });
+
+      // SEO: pre-rendrede sider ligger på /<slug>/.../ og embedder sin topic-path
+      // i window.__SEO_TOPIC_PATH__ (se scripts/generate-seo-pages.mjs).
+      // Normaliser til kanonisk hash-URL uten omlasting. Kjører bare på sider
+      // som faktisk er pre-rendret — vanlig index.html (inkl. åpnet via file://,
+      // der replaceState til '/' kaster SecurityError) berøres ikke.
+      const seoPath = window.__SEO_TOPIC_PATH__;
+      if (Array.isArray(seoPath) && seoPath.length && window.location.pathname !== '/') {
+        const seoHash = (window.location.hash && window.location.hash !== '#')
+          ? window.location.hash
+          : '#topic/' + seoPath.join('/');
+        try {
+          history.replaceState(null, '', '/' + seoHash);
+        } catch (e) {
+          // Uventet miljø (f.eks. file:) — fortsett uten URL-normalisering
+          logger.warn('[App] Kunne ikke normalisere SEO-URL:', e);
+          window.location.hash = seoHash;
+        }
+      }
 
       // Route based on current URL hash
       if (window.location.hash && window.location.hash !== '#') {
