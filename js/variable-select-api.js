@@ -11,6 +11,15 @@
 // ============================================================
 
 /**
+ * Read the value of the checked radio in a pill group.
+ * @param {string} name - The radio group's name attribute
+ * @returns {string} Checked value, or '' if none
+ */
+function getApiRadioValue(name) {
+  return document.querySelector('input[name="' + name + '"]:checked')?.value ?? '';
+}
+
+/**
  * Update the real-time API query preview box.
  * Shows the full data URL and metadata URL for the SSB API.
  * Includes output format, format params, separator, and stub/heading layout.
@@ -22,29 +31,29 @@ function updateQueryPreview() {
 
   const selection = getVariableSelection();
   const tableId = AppState.selectedTable.id;
-  const mode = document.getElementById('api-method-toggle')?.value || 'get';
+  const mode = getApiRadioValue('api-method') || 'get';
   const urlDecoded = document.getElementById('api-decode-url-cb')?.checked || false;
 
   // Collect format-specific params (valid for both GET and POST URLs)
-  const format = document.getElementById('api-output-format')?.value || '';
+  const format = getApiRadioValue('api-output-format');
   const formatsSupportingParams = ['csv', 'html', 'xlsx'];
   const fmtParams = [];
   let stubDims = undefined;
 
   if (formatsSupportingParams.includes(format)) {
-    const displayFormat = document.getElementById('api-display-format')?.value;
+    const displayFormat = getApiRadioValue('api-display-format');
     if (displayFormat) fmtParams.push(displayFormat);
 
-    const includeTitle = document.getElementById('api-include-title')?.value;
-    if (includeTitle) fmtParams.push(includeTitle);
+    if (document.getElementById('api-include-title-cb')?.checked) {
+      fmtParams.push('IncludeTitle');
+    }
 
     if (format === 'csv') {
-      const separator = document.getElementById('api-csv-separator')?.value;
+      const separator = getApiRadioValue('api-csv-separator');
       if (separator) fmtParams.push(separator);
     }
 
-    const layout = document.getElementById('api-table-layout')?.value;
-    if (layout === 'pivot') {
+    if (document.getElementById('api-layout-pivot-cb')?.checked) {
       const allDims = Object.keys(selection);
       if (allDims.length > 0) stubDims = allDims;
     }
@@ -99,6 +108,8 @@ function updateQueryPreview() {
 
   if (mode === 'get') {
     // GET mode: show full URL (with valueCodes)
+    // Keep the raw encoded URL for copy/open — the decoded display variant may not be a valid URL
+    previewUrl.dataset.rawUrl = fullGetUrl;
     previewUrl.textContent = urlDecoded ? decodeURIComponent(fullGetUrl) : fullGetUrl;
 
     // URL length warning
@@ -120,6 +131,7 @@ function updateQueryPreview() {
     }
   } else {
     // POST mode: show endpoint URL with format params (no valueCodes) + JSON body
+    previewUrl.dataset.rawUrl = fullPostUrl;
     previewUrl.textContent = urlDecoded ? decodeURIComponent(fullPostUrl) : fullPostUrl;
 
     // Build and show POST body (include stub/heading placement if pivot layout)
@@ -156,36 +168,23 @@ function updateQueryPreview() {
  * Handles: format selector with conditional options, copy URL, copy curl, open in browser.
  */
 function setupApiBuilderEvents() {
-  const formatSelect = document.getElementById('api-output-format');
-
-  // Trim unsupported formats from the dropdown. /config returns the live list
+  // Trim unsupported formats from the pill group. /config returns the live list
   // of dataFormats; api._applyConfig populates AppConfig.limits.dataFormats.
   // Empty value="" is JSON-stat2 (the default) and is always kept.
-  if (formatSelect && Array.isArray(AppConfig.limits.dataFormats)) {
+  const formatGroup = document.getElementById('api-format-group');
+  if (formatGroup && Array.isArray(AppConfig.limits.dataFormats)) {
     const allowed = new Set(AppConfig.limits.dataFormats.map(f => f.toLowerCase()));
     allowed.add('');
     allowed.add('json-stat2');
-    Array.from(formatSelect.options).forEach(opt => {
-      if (!allowed.has(opt.value.toLowerCase())) opt.remove();
+    formatGroup.querySelectorAll('input[name="api-output-format"]').forEach(input => {
+      if (!allowed.has(input.value.toLowerCase())) input.closest('.api-pill')?.remove();
     });
   }
 
-  // Method toggle (GET/POST)
-  document.getElementById('api-method-toggle')?.addEventListener('change', () => {
-    updateQueryPreview();
-  });
-
-  // Output format selector — show/hide format-specific options
-  formatSelect?.addEventListener('change', () => {
+  // All option pills/checkboxes: one delegated listener updates visibility + preview
+  document.getElementById('api-builder-options')?.addEventListener('change', () => {
     updateApiBuilderOptionsVisibility();
     updateQueryPreview();
-  });
-
-  // All sub-option selectors should also trigger URL update
-  ['api-display-format', 'api-include-title', 'api-csv-separator', 'api-table-layout'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', () => {
-      updateQueryPreview();
-    });
   });
 
   // Decode URL checkbox
@@ -193,40 +192,18 @@ function setupApiBuilderEvents() {
     updateQueryPreview();
   });
 
-  // Copy data URL
+  // Copy data URL (always the raw encoded URL, even when the decoded variant is displayed)
   document.getElementById('api-copy-url-btn')?.addEventListener('click', () => {
-    const url = document.getElementById('query-preview-url')?.textContent;
+    const url = document.getElementById('query-preview-url')?.dataset.rawUrl;
     if (url && url.startsWith('http')) {
       copyToClipboard(url);
       showCopyToast();
     }
   });
 
-  // Copy as curl command (mode-aware)
-  document.getElementById('api-copy-curl-btn')?.addEventListener('click', () => {
-    const mode = document.getElementById('api-method-toggle')?.value || 'get';
-    if (mode === 'get') {
-      const url = document.getElementById('query-preview-url')?.textContent;
-      if (url && url.startsWith('http')) {
-        copyToClipboard("curl '" + url + "'");
-        showCopyToast();
-      }
-    } else {
-      const endpoint = document.getElementById('query-preview-url')?.textContent;
-      const body = document.getElementById('api-post-body-preview')?.textContent;
-      if (endpoint && body) {
-        const cmd = "curl -X POST '" + endpoint + "' \\\n"
-          + "  -H 'Content-Type: application/json' \\\n"
-          + "  -d '" + body.replace(/'/g, "'\\''") + "'";
-        copyToClipboard(cmd);
-        showCopyToast();
-      }
-    }
-  });
-
   // Open data URL in new tab (GET only)
   document.getElementById('api-open-btn')?.addEventListener('click', () => {
-    const url = document.getElementById('query-preview-url')?.textContent;
+    const url = document.getElementById('query-preview-url')?.dataset.rawUrl;
     if (url && url.startsWith('http')) {
       window.open(url, '_blank');
     }
@@ -262,29 +239,25 @@ function setupApiBuilderEvents() {
 /**
  * Show/hide format-specific option rows based on the selected output format.
  *
- * - csv, html, xlsx: show display format, title option, layout option
- * - csv only: also show separator option
+ * - csv, html, xlsx: show display format row + title/layout checkboxes
+ * - csv only: also show separator row
  * - Other formats: hide all sub-options
  */
 function updateApiBuilderOptionsVisibility() {
-  const format = document.getElementById('api-output-format')?.value || '';
+  const format = getApiRadioValue('api-output-format');
   const hasFormatParams = ['csv', 'html', 'xlsx'].includes(format);
 
   // Display format (UseCodes/UseTexts/UseCodesAndTexts)
   const displayOption = document.getElementById('api-display-option');
   if (displayOption) displayOption.style.display = hasFormatParams ? '' : 'none';
 
-  // Include title
-  const titleOption = document.getElementById('api-title-option');
-  if (titleOption) titleOption.style.display = hasFormatParams ? '' : 'none';
-
   // CSV separator (csv only)
   const separatorOption = document.getElementById('api-separator-option');
   if (separatorOption) separatorOption.style.display = format === 'csv' ? '' : 'none';
 
-  // Table layout / stub+heading (csv, html, xlsx)
-  const layoutOption = document.getElementById('api-layout-option');
-  if (layoutOption) layoutOption.style.display = hasFormatParams ? '' : 'none';
+  // Title + pivot layout checkboxes (csv, html, xlsx)
+  const extrasOption = document.getElementById('api-extras-option');
+  if (extrasOption) extrasOption.style.display = hasFormatParams ? '' : 'none';
 }
 
 /**

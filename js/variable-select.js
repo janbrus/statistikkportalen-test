@@ -96,59 +96,48 @@ async function renderVariableSelection(container) {
         </button>
         <div class="query-preview-content" id="query-preview-content" style="display: none;">
 
-          <div class="api-builder-options-grid">
-            <div class="api-builder-option">
-              <label class="api-builder-label">${t('api.method')}</label>
-              <select id="api-method-toggle" class="api-format-select">
-                <option value="get">GET</option>
-                <option value="post">POST</option>
-              </select>
+          <div class="api-builder-options" id="api-builder-options">
+            <div class="api-option-row">
+              <span class="api-builder-label">${t('api.method')}</span>
+              <div class="api-pill-group" role="radiogroup" aria-label="${t('api.method')}">
+                <label class="api-pill"><input type="radio" name="api-method" value="get" checked><span>GET</span></label>
+                <label class="api-pill"><input type="radio" name="api-method" value="post"><span>POST</span></label>
+              </div>
             </div>
 
-            <div class="api-builder-option">
-              <label class="api-builder-label">${t('api.format')}</label>
-              <select id="api-output-format" class="api-format-select">
-                <option value="" selected>JSON-stat2 (standard)</option>
-                <option value="csv">CSV</option>
-                <option value="xlsx">Excel (xlsx)</option>
-                <option value="px">PX (PC-Axis)</option>
-                <option value="html">HTML</option>
-                <option value="json-px">JSON-PX</option>
-              </select>
+            <div class="api-option-row">
+              <span class="api-builder-label">${t('api.format')}</span>
+              <div class="api-pill-group" id="api-format-group" role="radiogroup" aria-label="${t('api.format')}">
+                <label class="api-pill"><input type="radio" name="api-output-format" value="" checked><span>JSON-stat2</span></label>
+                <label class="api-pill"><input type="radio" name="api-output-format" value="csv"><span>CSV</span></label>
+                <label class="api-pill"><input type="radio" name="api-output-format" value="xlsx"><span>Excel</span></label>
+                <label class="api-pill"><input type="radio" name="api-output-format" value="px"><span>PX</span></label>
+                <label class="api-pill"><input type="radio" name="api-output-format" value="html"><span>HTML</span></label>
+                <label class="api-pill"><input type="radio" name="api-output-format" value="json-px"><span>JSON-PX</span></label>
+              </div>
             </div>
 
-            <div class="api-builder-option" id="api-display-option" style="display: none;">
-              <label class="api-builder-label">${t('api.display')}</label>
-              <select id="api-display-format" class="api-format-select">
-                <option value="UseTexts" selected>${t('api.displayText')}</option>
-                <option value="UseCodes">${t('api.displayCodes')}</option>
-                <option value="UseCodesAndTexts">${t('api.displayBoth')}</option>
-              </select>
+            <div class="api-option-row" id="api-display-option" style="display: none;">
+              <span class="api-builder-label">${t('api.display')}</span>
+              <div class="api-pill-group" role="radiogroup" aria-label="${t('api.display')}">
+                <label class="api-pill"><input type="radio" name="api-display-format" value="UseTexts" checked><span>${t('api.displayText')}</span></label>
+                <label class="api-pill"><input type="radio" name="api-display-format" value="UseCodes"><span>${t('api.displayCodes')}</span></label>
+                <label class="api-pill"><input type="radio" name="api-display-format" value="UseCodesAndTexts"><span>${t('api.displayBoth')}</span></label>
+              </div>
             </div>
 
-            <div class="api-builder-option" id="api-title-option" style="display: none;">
-              <label class="api-builder-label">${t('api.tableTitle')}</label>
-              <select id="api-include-title" class="api-format-select">
-                <option value="" selected>${t('variable.withoutTitle')}</option>
-                <option value="IncludeTitle">${t('variable.withTitle')}</option>
-              </select>
+            <div class="api-option-row" id="api-separator-option" style="display: none;">
+              <span class="api-builder-label">${t('api.separator')}</span>
+              <div class="api-pill-group" role="radiogroup" aria-label="${t('api.separator')}">
+                <label class="api-pill"><input type="radio" name="api-csv-separator" value="SeparatorSemicolon" checked><span>${t('api.separatorSemicolon')}</span></label>
+                <label class="api-pill"><input type="radio" name="api-csv-separator" value="SeparatorTab"><span>${t('api.separatorTab')}</span></label>
+                <label class="api-pill"><input type="radio" name="api-csv-separator" value="SeparatorSpace"><span>${t('api.separatorSpace')}</span></label>
+              </div>
             </div>
 
-            <div class="api-builder-option" id="api-separator-option" style="display: none;">
-              <label class="api-builder-label">${t('api.separator')}</label>
-              <select id="api-csv-separator" class="api-format-select">
-                <option value="SeparatorSemicolon" selected>${t('api.separatorSemicolon')}</option>
-                <option value="SeparatorTab">${t('api.separatorTab')}</option>
-                <option value="SeparatorSpace">${t('api.separatorSpace')}</option>
-              </select>
-            </div>
-
-            <div class="api-builder-option" id="api-layout-option" style="display: none;">
-              <label class="api-builder-label">${t('api.layout')}</label>
-              <select id="api-table-layout" class="api-format-select">
-                <option value="" selected>${t('api.layoutStandard')}</option>
-                <option value="pivot">${t('api.layoutPivot')}</option>
-              </select>
+            <div class="api-option-row" id="api-extras-option" style="display: none;">
+              <label class="api-builder-checkbox-label"><input type="checkbox" id="api-include-title-cb"> ${t('api.includeTitle')}</label>
+              <label class="api-builder-checkbox-label"><input type="checkbox" id="api-layout-pivot-cb"> ${t('api.layoutPivot')}</label>
             </div>
           </div>
 

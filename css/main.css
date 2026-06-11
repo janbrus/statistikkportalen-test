@@ -822,17 +822,18 @@ button {
 
 /* ========== Enhanced API Builder ========== */
 
-.api-builder-options-grid {
+.api-builder-options {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-sm) var(--spacing-lg);
+  flex-direction: column;
+  gap: var(--spacing-sm);
   margin-bottom: var(--spacing-md);
 }
 
-.api-builder-option {
+.api-option-row {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-md);
 }
 
 .api-builder-label {
@@ -840,16 +841,50 @@ button {
   font-weight: 600;
   color: var(--color-text);
   white-space: nowrap;
+  min-width: 8rem;
 }
 
-.api-format-select {
-  padding: var(--spacing-xs) var(--spacing-sm);
+.api-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.api-pill {
+  position: relative;
+}
+
+.api-pill input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.api-pill span {
+  display: inline-block;
+  padding: 0.15rem 0.7rem;
   border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: 999px;
   background: var(--color-surface);
   font-size: var(--font-size-sm);
-  font-family: inherit;
   cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.api-pill span:hover {
+  border-color: var(--color-primary);
+}
+
+.api-pill input:checked + span {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.api-pill input:focus-visible + span {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .api-builder-section {
