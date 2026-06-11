@@ -11,6 +11,15 @@
  * bytter URL til den kanoniske hash-ruten (#topic/...) via
  * window.__SEO_TOPIC_PATH__ (se bootstrap-snutten i index.html).
  *
+ * Sidedybden speiler appen (topic-view.js): nivåer t.o.m. AppConfig.ui
+ * .topicCardDepth får egne sider med lenker til undersidene, mens første nivå
+ * under kortene blir én samlet oversiktsside med hele undertreet som
+ * seksjoner — ingen dypere sider genereres.
+ *
+ * Forsiden (index.html) får også statisk innhold i #content (emnegrupper med
+ * lenker). Originalinnholdet bevares base64-kodet i en markør-kommentar, slik
+ * at scriptet kan gjenopprette en uberørt mal ved neste kjøring.
+ *
  * API-endepunkt, sidestørrelse, appnavn og kildeinfo leses fra appens egne
  * js/config.js og js/subjects.js (via node:vm) — én kilde til sannhet, og
  * scriptet fungerer uendret for andre PxWebApi-instanser.
@@ -239,30 +248,60 @@ function subtreeStats(node, stats = { ids: new Set(), discontinued: new Set(), l
 /**
  * Bygger flat liste av sider som skal genereres. Hver side:
  * { dir, url, hashPath, label, parentLabels, breadcrumbs, children, tables,
- *   discontinuedCount, activeCount, lastUpdated }
+ *   sections, discontinuedCount, activeCount, lastUpdated }
+ *
+ * Som i appen (topic-view.js): nivåer t.o.m. cardDepth får egne sider med
+ * lenker til undersidene (kort), mens første nivå under kortene blir én samlet
+ * oversiktsside med hele undertreet som seksjoner — ingen dypere sider.
  */
-function buildPages(subjectConfig, hierarchy) {
+function buildPages(subjectConfig, hierarchy, cardDepth) {
   const pages = [];
+
+  const bySortCode = (a, b) => String(a.sortCode).localeCompare(String(b.sortCode));
+  const byUpdatedDesc = (a, b) => String(b.updated || '').localeCompare(String(a.updated || ''));
+
+  // Hele undertreet som nestede seksjoner (for oversiktssidene under kort-nivåene)
+  function buildSections(childNodes) {
+    const sections = [];
+    for (const child of [...childNodes].sort(bySortCode)) {
+      const childStats = subtreeStats(child);
+      if (childStats.ids.size === 0) continue;
+      sections.push({
+        label: child.label,
+        tableCount: childStats.ids.size,
+        tables: dedupeActiveTables(child.tables).sort(byUpdatedDesc),
+        children: buildSections(Object.values(child.children)),
+      });
+    }
+    return sections;
+  }
 
   function addNode(node, label, dir, hashPath, breadcrumbs, parentLabels) {
     const stats = subtreeStats(node);
     const activeCount = stats.ids.size;
-    const childNodes = Object.values(node.children)
-      .sort((a, b) => String(a.sortCode).localeCompare(String(b.sortCode)));
+    const childNodes = Object.values(node.children).sort(bySortCode);
 
     if (activeCount === 0 && childNodes.length === 0) return null; // tom node — hopp over
 
-    const usedSlugs = new Set();
+    // Under kort-nivåene: samlet oversiktsside med hele undertreet, ingen undersider
+    const isOverview = hashPath.length > cardDepth;
+
     const children = [];
-    for (const child of childNodes) {
-      const childStats = subtreeStats(child);
-      if (childStats.ids.size === 0 && Object.keys(child.children).length === 0) continue;
-      const slug = uniqueSlug(child.label, child.id, usedSlugs);
-      const childPage = addNode(
-        child, child.label, `${dir}/${slug}`, [...hashPath, child.id],
-        [...breadcrumbs, { label, dir }], [...parentLabels, label]
-      );
-      if (childPage) children.push({ label: child.label, dir: childPage.dir, tableCount: childStats.ids.size });
+    let sections = [];
+    if (isOverview) {
+      sections = buildSections(childNodes);
+    } else {
+      const usedSlugs = new Set();
+      for (const child of childNodes) {
+        const childStats = subtreeStats(child);
+        if (childStats.ids.size === 0 && Object.keys(child.children).length === 0) continue;
+        const slug = uniqueSlug(child.label, child.id, usedSlugs);
+        const childPage = addNode(
+          child, child.label, `${dir}/${slug}`, [...hashPath, child.id],
+          [...breadcrumbs, { label, dir }], [...parentLabels, label]
+        );
+        if (childPage) children.push({ label: child.label, dir: childPage.dir, tableCount: childStats.ids.size });
+      }
     }
 
     const page = {
@@ -272,8 +311,11 @@ function buildPages(subjectConfig, hierarchy) {
       parentLabels,
       breadcrumbs,
       children,
-      tables: dedupeActiveTables(node.tables).sort((a, b) => String(b.updated || '').localeCompare(String(a.updated || ''))),
-      discontinuedCount: node.tables.filter(t => t.discontinued).length,
+      sections,
+      tables: dedupeActiveTables(node.tables).sort(byUpdatedDesc),
+      discontinuedCount: isOverview
+        ? stats.discontinued.size
+        : node.tables.filter(t => t.discontinued).length,
       activeCount,
       lastUpdated: stats.lastUpdated,
     };
@@ -315,10 +357,12 @@ function buildPages(subjectConfig, hierarchy) {
       parentLabels: [],
       breadcrumbs: [],
       children: groupChildren,
+      sections: [],
       tables: [],
       discontinuedCount: 0,
       activeCount: groupActive,
       lastUpdated: groupLastUpdated,
+      isGroup: true,
     });
   }
 
@@ -339,12 +383,24 @@ function escapeAttr(str) {
   return escapeHtml(str);
 }
 
+// Forside-injeksjonen rammes inn av markører med originalinnholdet
+// base64-kodet, slik at malen kan gjenopprettes uberørt ved neste kjøring
+// (index.html er både deployet forside og mal for undersidene).
+const ROOT_CONTENT_RE = /(<div id="content">)[\s\S]*?<!-- seo-root:start orig="([A-Za-z0-9+/=]*)" -->[\s\S]*?<!-- seo-root:end -->[\s\S]*?(<\/div>)/;
+const ROOT_JSONLD_RE = /\n?[ \t]*<script type="application\/ld\+json" id="seo-root-jsonld">[\s\S]*?<\/script>/;
+
+function stripRootInjection(html) {
+  const m = html.match(ROOT_CONTENT_RE);
+  if (m) html = html.replace(ROOT_CONTENT_RE, () => `${m[1]}${Buffer.from(m[2], 'base64').toString('utf8')}${m[3]}`);
+  return html.replace(ROOT_JSONLD_RE, '');
+}
+
 function loadTemplate(webroot) {
   const templatePath = path.join(webroot, 'index.html');
   if (!fs.existsSync(templatePath)) {
     throw new Error(`Fant ikke ${templatePath} — webroot må inneholde den deployede appen.`);
   }
-  const template = fs.readFileSync(templatePath, 'utf8');
+  const template = stripRootInjection(fs.readFileSync(templatePath, 'utf8'));
   if (!template.includes('__SEO_TOPIC_PATH__')) {
     throw new Error('Deployet index.html mangler __SEO_TOPIC_PATH__-bootstrapen — deploy appversjonen med SEO-støtte (v1.4.1+) først.');
   }
@@ -363,12 +419,35 @@ function buildDescription(page, appConfig) {
   const n = page.activeCount;
   const sourceName = appConfig.source.nameFull || appConfig.source.name;
   let desc = `Statistikk om ${page.label.toLowerCase()}: ${n} ${n === 1 ? 'tabell' : 'tabeller'} fra ${sourceName}.`;
-  if (page.children.length > 0) {
-    let childPart = page.children.map(c => c.label).join(', ');
+  const childLabels = page.children.length > 0
+    ? page.children.map(c => c.label)
+    : (page.sections || []).map(s => s.label);
+  if (childLabels.length > 0) {
+    let childPart = childLabels.join(', ');
     if (childPart.length > 120) childPart = childPart.slice(0, 117).replace(/,?\s+\S*$/, '') + '…';
     desc += ` Omfatter ${childPart}.`;
   }
   return desc;
+}
+
+function tableListHtml(tables) {
+  const items = tables.map(t => {
+    const updated = t.updated ? ` <small>(oppdatert ${escapeHtml(String(t.updated).slice(0, 10))})</small>` : '';
+    return `<li><a href="/#variables/${escapeAttr(t.id)}">${escapeHtml(t.label)}</a>${updated}</li>`;
+  });
+  return `<ul>${items.join('\n')}</ul>`;
+}
+
+/** Nestede undertre-seksjoner på oversiktssider: overskrift + tabelliste per nivå. */
+function sectionsHtml(sections, level) {
+  const h = Math.min(level, 4);
+  const parts = [];
+  for (const s of sections) {
+    parts.push(`<h${h}>${escapeHtml(s.label)} <small>(${s.tableCount} ${s.tableCount === 1 ? 'tabell' : 'tabeller'})</small></h${h}>`);
+    if (s.tables.length > 0) parts.push(tableListHtml(s.tables));
+    if (s.children.length > 0) parts.push(sectionsHtml(s.children, level + 1));
+  }
+  return parts.join('\n      ');
 }
 
 function buildContentHtml(page, appConfig) {
@@ -395,11 +474,11 @@ function buildContentHtml(page, appConfig) {
 
   if (page.tables.length > 0) {
     parts.push('<h2>Tabeller</h2>');
-    const items = page.tables.map(t => {
-      const updated = t.updated ? ` <small>(oppdatert ${escapeHtml(String(t.updated).slice(0, 10))})</small>` : '';
-      return `<li><a href="/#variables/${escapeAttr(t.id)}">${escapeHtml(t.label)}</a>${updated}</li>`;
-    });
-    parts.push(`<ul>${items.join('\n')}</ul>`);
+    parts.push(tableListHtml(page.tables));
+  }
+
+  if ((page.sections || []).length > 0) {
+    parts.push(sectionsHtml(page.sections, 2));
   }
 
   if (page.discontinuedCount > 0) {
@@ -409,10 +488,23 @@ function buildContentHtml(page, appConfig) {
   return parts.join('\n      ');
 }
 
+/** Alle tabeller en side viser (direkte + i undertre-seksjoner), dedupet på id. */
+function collectPageTables(page) {
+  const out = new Map();
+  for (const t of page.tables) out.set(t.id, t);
+  (function walk(sections) {
+    for (const s of sections || []) {
+      for (const t of s.tables) if (!out.has(t.id)) out.set(t.id, t);
+      walk(s.children);
+    }
+  })(page.sections);
+  return [...out.values()];
+}
+
 /**
  * Strukturerte data (schema.org JSON-LD): BreadcrumbList for alle sider,
  * pluss DataCatalog med Dataset per tabell (trigget av Google Dataset Search)
- * på sider som lister tabeller direkte.
+ * på sider som lister tabeller.
  */
 function buildJsonLd(page, site, appConfig) {
   const url = `${site}/${page.dir}/`;
@@ -434,7 +526,8 @@ function buildJsonLd(page, site, appConfig) {
     })),
   });
 
-  if (page.tables.length > 0) {
+  const allTables = collectPageTables(page);
+  if (allTables.length > 0) {
     const creator = {
       '@type': 'Organization',
       name: source.nameFull || source.name,
@@ -445,7 +538,7 @@ function buildJsonLd(page, site, appConfig) {
       name: `${page.label} – ${appConfig.app.name}`,
       url,
       ...(source.licenseUrl ? { license: source.licenseUrl } : {}),
-      dataset: page.tables.map(t => ({
+      dataset: allTables.map(t => ({
         '@type': 'Dataset',
         name: t.label,
         description: `${t.label}. Statistikktabell ${t.id} fra ${creator.name}.`,
@@ -501,13 +594,71 @@ function renderPage(template, page, site, appConfig) {
   );
 
   // Statisk crawlbart innhold i #content
-  const contentRegex = /(<div id="content">)([\s\S]*?)(<\/div>)/;
-  const match = html.match(contentRegex);
+  matchContentDiv(html);
+  html = html.replace(CONTENT_DIV_RE, `$1\n      ${buildContentHtml(page, appConfig)}\n    $3`);
+
+  return html;
+}
+
+const CONTENT_DIV_RE = /(<div id="content">)([\s\S]*?)(<\/div>)/;
+
+function matchContentDiv(html) {
+  const match = html.match(CONTENT_DIV_RE);
   if (!match) throw new Error('Fant ikke <div id="content"> i malen.');
   if (match[2].length > 500) {
     throw new Error('<div id="content"> i malen har uventet mye innhold — strukturen kan ha endret seg, oppdater scriptet.');
   }
-  html = html.replace(contentRegex, `$1\n      ${buildContentHtml(page, appConfig)}\n    $3`);
+  return match;
+}
+
+// ---------------------------------------------------------------------------
+// Forsiden (index.html): statisk crawlbart innhold + WebSite JSON-LD
+// ---------------------------------------------------------------------------
+
+function buildRootContentHtml(pages, totalActive, appConfig) {
+  const sourceName = appConfig.source.nameFull || appConfig.source.name;
+  const parts = [];
+  parts.push('<h2>Statistikk etter emne</h2>');
+  parts.push(`<p>Utforsk ${totalActive} statistikktabeller fra ${escapeHtml(sourceName)} — søk, filtrer og last ned tall, gratis og uten innlogging.</p>`);
+  for (const group of pages.filter(p => p.isGroup)) {
+    parts.push(`<h3><a href="/${escapeAttr(group.dir)}/">${escapeHtml(group.label)}</a> <small>(${group.activeCount} tabeller)</small></h3>`);
+    const items = group.children.map(c =>
+      `<li><a href="/${escapeAttr(c.dir)}/">${escapeHtml(c.label)}</a> (${c.tableCount} ${c.tableCount === 1 ? 'tabell' : 'tabeller'})</li>`
+    );
+    parts.push(`<ul>${items.join('\n')}</ul>`);
+  }
+  return parts.join('\n      ');
+}
+
+/**
+ * Forsiden beholder appens egen tittel/beskrivelse og relative asset-stier,
+ * men får statisk emneoversikt i #content (med base64-bevart original, se
+ * stripRootInjection), WebSite JSON-LD og canonical/og:url satt til --site.
+ */
+function renderRootPage(template, site, appConfig, pages, totalActive) {
+  const match = matchContentDiv(template);
+  const orig = Buffer.from(match[2], 'utf8').toString('base64');
+  const inner = `<!-- seo-root:start orig="${orig}" -->\n      ${buildRootContentHtml(pages, totalActive, appConfig)}\n      <!-- seo-root:end -->`;
+  let html = template.replace(CONTENT_DIV_RE, () => `${match[1]}\n      ${inner}\n    ${match[3]}`);
+
+  html = mustReplace(html, /<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${escapeAttr(site)}/">`, 'canonical (forside)');
+  html = mustReplace(html, /<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${escapeAttr(site)}/">`, 'og:url (forside)');
+
+  const tagline = appConfig.app.tagline;
+  const description = (tagline && typeof tagline === 'object') ? (tagline.nb || Object.values(tagline)[0]) : tagline;
+  const jsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: appConfig.app.name,
+    url: `${site}/`,
+    ...(description ? { description } : {}),
+  }).replace(/</g, '\\u003c');
+  html = mustReplace(
+    html,
+    /<\/head>/,
+    `  <script type="application/ld+json" id="seo-root-jsonld">${jsonLd}</script>\n</head>`,
+    '</head> (JSON-LD forside)'
+  );
 
   return html;
 }
@@ -564,7 +715,7 @@ function atomicWrite(filePath, content) {
   fs.renameSync(tmp, filePath);
 }
 
-function main_write(webroot, site, appConfig, pages, oldManifest, dryRun) {
+function main_write(webroot, site, appConfig, pages, totalActive, oldManifest, dryRun) {
   const newDirs = pages.map(p => p.dir).sort();
   const sitemap = buildSitemap(pages, site);
 
@@ -581,26 +732,27 @@ function main_write(webroot, site, appConfig, pages, oldManifest, dryRun) {
 
   if (dryRun) {
     console.log(`\n[SEO] DRY RUN — ingen filer skrives.`);
-    console.log(`[SEO] Ville skrevet ${newDirs.length} sider + sitemap.xml${robotsOwned ? ' + robots.txt' : ''}:`);
+    console.log(`[SEO] Ville skrevet forside-innhold i index.html + ${newDirs.length} sider + sitemap.xml${robotsOwned ? ' + robots.txt' : ''}:`);
     for (const d of newDirs) console.log(`  /${d}/`);
     if (staleDirs.length) {
       console.log(`[SEO] Ville slettet ${staleDirs.length} utdaterte mapper:`);
       for (const d of staleDirs) console.log(`  /${d}/`);
     }
-    const sample = pages.find(p => p.hashPath.length >= 3) || pages[pages.length - 1];
+    const sample = pages.find(p => (p.sections || []).length > 0) || pages[pages.length - 1];
     console.log(`\n[SEO] Eksempelside (/${sample.dir}/):\n`);
     console.log(renderPage(loadTemplate(webroot), sample, site, appConfig));
     return;
   }
 
-  // 1) Skriv alle nye sider
+  // 1) Skriv alle nye sider + statisk forside-innhold i index.html
   const template = loadTemplate(webroot);
   for (const page of pages) {
     const dirPath = path.join(webroot, page.dir);
     fs.mkdirSync(dirPath, { recursive: true });
     atomicWrite(path.join(dirPath, 'index.html'), renderPage(template, page, site, appConfig));
   }
-  console.log(`[SEO] Skrev ${pages.length} sider.`);
+  atomicWrite(path.join(webroot, 'index.html'), renderRootPage(template, site, appConfig, pages, totalActive));
+  console.log(`[SEO] Skrev ${pages.length} sider + forside-innhold i index.html.`);
 
   // 2) sitemap + robots
   atomicWrite(path.join(webroot, 'sitemap.xml'), sitemap);
@@ -638,11 +790,13 @@ async function main() {
 
   const tables = await fetchAllTables(appConfig, args.minTables);
   const hierarchy = buildHierarchy(tables);
-  const pages = buildPages(subjectConfig, hierarchy);
-  console.log(`[SEO] Bygde ${pages.length} sider fra ${tables.length} tabeller.`);
+  const cardDepth = appConfig.ui?.topicCardDepth ?? 2; // samme terskel som topic-view.js
+  const pages = buildPages(subjectConfig, hierarchy, cardDepth);
+  const totalActive = new Set(tables.filter(t => !t.discontinued).map(t => t.id)).size;
+  console.log(`[SEO] Bygde ${pages.length} sider fra ${tables.length} tabeller (kort-dybde ${cardDepth}).`);
 
   const oldManifest = loadManifest(args.webroot);
-  main_write(args.webroot, args.site, appConfig, pages, oldManifest, args.dryRun);
+  main_write(args.webroot, args.site, appConfig, pages, totalActive, oldManifest, args.dryRun);
 }
 
 main().catch(err => {
