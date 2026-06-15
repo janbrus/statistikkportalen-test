@@ -291,6 +291,19 @@ function updatePageTitle(parts) {
 }
 
 /**
+ * True når siden er pre-rendret av SEO-generatoren (scripts/generate-seo-pages.mjs)
+ * og det statiske innholdet i #content matcher gjeldende rute. Visningene lar
+ * da innholdet stå som plassholder under første datalasting i stedet for å
+ * vise spinner — unngår at siden «blinker» ved oppstart.
+ * @param {string[]} topicPath - Rutens topic-path ([] for forsiden)
+ * @returns {boolean}
+ */
+function seoContentMatchesRoute(topicPath) {
+  const seoPath = window.__SEO_TOPIC_PATH__;
+  return Array.isArray(seoPath) && seoPath.join('/') === (topicPath || []).join('/');
+}
+
+/**
  * Escape HTML to prevent XSS
  * @param {string} text - Text to escape
  * @returns {string} - Escaped text

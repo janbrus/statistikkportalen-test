@@ -933,6 +933,16 @@ button {
   margin-top: var(--spacing-xs);
 }
 
+/* Vises bare uten JavaScript (se <noscript> i index.html) */
+.noscript-notice {
+  color: #7a5c00;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: var(--border-radius);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
 .api-copy-toast {
   font-size: var(--font-size-sm);
   color: var(--color-success);

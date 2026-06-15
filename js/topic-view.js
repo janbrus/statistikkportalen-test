@@ -14,11 +14,16 @@
 async function renderTopicView(container) {
   // Ensure data is loaded
   if (!BrowserState.isLoaded) {
-    container.innerHTML = `
-      <div class="loading-spinner">
-        <p>${t('loading.tables')}</p>
-      </div>
-    `;
+    // Pre-rendret SEO-emneside for samme rute: behold det statiske innholdet
+    // som plassholder under lastingen i stedet for spinner, så siden ikke
+    // blinker ved oppstart (se scripts/generate-seo-pages.mjs)
+    if (!seoContentMatchesRoute(AppState.topicPath)) {
+      container.innerHTML = `
+        <div class="loading-spinner">
+          <p>${t('loading.tables')}</p>
+        </div>
+      `;
+    }
     try {
       await BrowserState.init();
     } catch (error) {

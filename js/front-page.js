@@ -8,11 +8,21 @@
 async function renderFrontPage(container) {
   // Show loading if data not ready
   if (!BrowserState.isLoaded) {
-    container.innerHTML = `
+    const spinnerHTML = `
       <div class="loading-spinner">
         <p>${t('loading.tables')}</p>
       </div>
     `;
+    // Pre-rendret SEO-forside: behold søkefeltet og emnegridet (som speiler
+    // denne visningen) som plassholder, og vis spinneren bare der «Nylig
+    // oppdaterte tabeller» kommer — siden blinker ikke ved oppstart
+    // (se scripts/generate-seo-pages.mjs)
+    const seoIntro = seoContentMatchesRoute([]) && container.querySelector('.front-seo-intro');
+    if (seoIntro) {
+      seoIntro.outerHTML = spinnerHTML;
+    } else {
+      container.innerHTML = spinnerHTML;
+    }
     try {
       await BrowserState.init();
     } catch (error) {
@@ -28,6 +38,9 @@ async function renderFrontPage(container) {
 
   const mh = BrowserState.menuHierarchy;
   const recentBuckets = _collectRecentUpdateGroups(mh, BrowserState.recentTables);
+
+  // Ta vare på søketekst skrevet i det statiske SEO-søkefeltet før re-render
+  const preRenderQuery = container.querySelector('#front-search')?.value || '';
 
   container.innerHTML = `
     <div class="front-page">
@@ -99,6 +112,7 @@ async function renderFrontPage(container) {
   // Search: navigate to search view on Enter
   const searchInput = document.getElementById('front-search');
   if (searchInput) {
+    if (preRenderQuery) searchInput.value = preRenderQuery;
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const query = searchInput.value.trim();
