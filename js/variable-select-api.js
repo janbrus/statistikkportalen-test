@@ -65,27 +65,13 @@ function updateQueryPreview() {
   if (fmtParams.length > 0) postParams.append('outputFormatParams', fmtParams.join(','));
   if (stubDims) postParams.append('stub', stubDims.join(','));
 
-  // Build GET URL params (POST params + valueCodes + active codelists)
-  // Time dimensions with explicit selections are replaced with from()/top() so the URL
-  // stays dynamically forward-looking (same logic as SSB's own URL simplifier):
-  //   > 2 periods → from(firstPeriod)   — fetch from a fixed start date onwards
-  //   1–2 periods → top(N)              — fetch the last N periods
+  // Build GET URL params (POST params + valueCodes + active codelists).
+  // Selections are arrays of explicit codes (specific mode) or the strings
+  // '*' (star mode) / 'top(N)' (Siste N mode) — all listed verbatim.
   const params = new URLSearchParams(postParams);
   Object.keys(selection).forEach(dimension => {
     const values = selection[dimension];
-    let valueStr;
-    if (Array.isArray(values) && values.length > 0) {
-      const isTimeDim = tableMetadata?.role?.time?.length
-        ? tableMetadata.role.time.includes(dimension)
-        : dimension === 'Tid' || dimension.toLowerCase().includes('tid');
-      if (isTimeDim) {
-        valueStr = values.length > 2 ? 'from(' + values[0] + ')' : 'top(' + values.length + ')';
-      } else {
-        valueStr = values.join(',');
-      }
-    } else {
-      valueStr = Array.isArray(values) ? values.join(',') : values;
-    }
+    const valueStr = Array.isArray(values) ? values.join(',') : values;
     params.append('valueCodes[' + dimension + ']', valueStr);
   });
   const activeCodelistIds = AppState.activeCodelistIds || {};
