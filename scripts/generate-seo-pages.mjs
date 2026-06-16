@@ -376,6 +376,44 @@ function buildPages(subjectConfig, hierarchy, cardDepth) {
 }
 
 // ---------------------------------------------------------------------------
+// Canonical: samme node (delsubtre) kan nås via flere stier → identiske sider
+// på ulike URL-er. Vi beholder alle sidene, men lar duplikatene canonicalisere
+// mot den første (primære) URL-en med samme innhold, så Google forstår originalen.
+// ---------------------------------------------------------------------------
+
+/** Innholdssignatur for en side — utelater brødsmuler og URL/dir (kun synlig
+ *  hovedinnhold teller), slik at to sider med samme innhold på ulike stier matcher. */
+function pageSignature(page) {
+  const ser = (secs) => (secs || []).map(s => ({
+    label: s.label,
+    tableCount: s.tableCount,
+    tables: s.tables.map(t => t.id).sort(),
+    children: ser(s.children),
+  }));
+  return JSON.stringify({
+    label: page.label,
+    tables: page.tables.map(t => t.id).sort(),
+    children: page.children.map(c => [c.label, c.tableCount]),
+    sections: ser(page.sections),
+    discontinuedCount: page.discontinuedCount,
+  });
+}
+
+/** Setter page.canonicalDir på hver side: første side med en gitt signatur er
+ *  primær (selv-refererende canonical), senere duplikater peker til den. */
+function assignCanonicals(pages) {
+  const firstBySig = new Map();
+  for (const page of pages) {            // pages er i deterministisk genereringsrekkefølge
+    const sig = pageSignature(page);     // (subjectGroups-rekkefølge + sortCode) = "første sti"
+    if (!firstBySig.has(sig)) firstBySig.set(sig, page.dir);
+    page.canonicalDir = firstBySig.get(sig);
+  }
+  const dupes = pages.filter(p => p.canonicalDir !== p.dir).length;
+  if (dupes) console.log(`[SEO] ${dupes} duplikatsider får canonical mot primær sti.`);
+  return pages;
+}
+
+// ---------------------------------------------------------------------------
 // HTML-generering
 // ---------------------------------------------------------------------------
 
@@ -610,7 +648,8 @@ function buildJsonLd(page, site, appConfig) {
 }
 
 function renderPage(template, page, site, appConfig) {
-  const url = `${site}/${page.dir}/`;
+  // Duplikatsider canonicaliserer mot den primære URL-en med samme innhold
+  const canonicalUrl = `${site}/${page.canonicalDir || page.dir}/`;
   const title = `${page.label} – ${appConfig.app.name}`;
   const description = buildDescription(page, appConfig);
 
@@ -623,10 +662,10 @@ function renderPage(template, page, site, appConfig) {
     `<meta name="description" content="${escapeAttr(description)}" id="meta-description">`,
     'meta description'
   );
-  html = mustReplace(html, /<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${escapeAttr(url)}">`, 'canonical');
+  html = mustReplace(html, /<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${escapeAttr(canonicalUrl)}">`, 'canonical');
   html = mustReplace(html, /<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escapeAttr(title)}">`, 'og:title');
   html = mustReplace(html, /<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${escapeAttr(description)}">`, 'og:description');
-  html = mustReplace(html, /<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${escapeAttr(url)}">`, 'og:url');
+  html = mustReplace(html, /<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${escapeAttr(canonicalUrl)}">`, 'og:url');
 
   // Relative asset-stier → absolutte (sidene ligger 1–4 mapper dypt)
   html = html.replace(/href="css\//g, 'href="/css/').replace(/src="js\//g, 'src="/js/');
@@ -793,7 +832,8 @@ function buildSitemap(pages, site) {
   const newest = pages.reduce((max, p) =>
     (p.lastUpdated && (!max || p.lastUpdated > max)) ? p.lastUpdated : max, null);
   const entries = [{ loc: `${site}/`, lastmod: newest ? String(newest).slice(0, 10) : null }];
-  for (const page of pages) {
+  // Kun kanoniske URL-er i sitemap — duplikater canonicaliserer mot en annen URL
+  for (const page of pages.filter(p => p.dir === (p.canonicalDir || p.dir))) {
     entries.push({
       loc: `${site}/${page.dir}/`,
       lastmod: page.lastUpdated ? String(page.lastUpdated).slice(0, 10) : null,
@@ -909,7 +949,7 @@ async function main() {
   const tables = await fetchAllTables(appConfig, args.minTables);
   const hierarchy = buildHierarchy(tables);
   const cardDepth = appConfig.ui?.topicCardDepth ?? 2; // samme terskel som topic-view.js
-  const pages = buildPages(subjectConfig, hierarchy, cardDepth);
+  const pages = assignCanonicals(buildPages(subjectConfig, hierarchy, cardDepth));
   const totalTables = new Set(tables.map(t => t.id)).size;
   console.log(`[SEO] Bygde ${pages.length} sider fra ${tables.length} tabeller (kort-dybde ${cardDepth}).`);
 
