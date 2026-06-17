@@ -305,7 +305,7 @@ const BrowserState = {
               <tr class="table-row ${isDiscontinued ? 'discontinued' : ''}" data-table-id="${table.id}">
                 <td>${escapeHtml(table.id)}</td>
                 <td>
-                  <a href="#variables/${table.id}" class="table-link">${escapeHtml(this.cleanTableLabel(table.label))}</a>
+                  <a href="#variables/${table.id}" class="table-link">${escapeHtml(this.cleanTableLabel(table.label, table.firstPeriod, table.lastPeriod))}</a>
                   ${isDiscontinued ? '<span class="discontinued-badge">Avsluttet</span>' : ''}
                 </td>
                 <td>${escapeHtml(table.firstPeriod || '')} - ${escapeHtml(table.lastPeriod || '')}</td>
@@ -319,10 +319,57 @@ const BrowserState = {
   },
 
   /**
-   * Clean table label (remove table ID prefix if present)
+   * Clean table label (remove table ID prefix if present, and optionally the
+   * trailing time period that SSB appends to many titles).
+   *
+   * The trailing period is only stripped when AppConfig.ui.hidePeriodInTableTitles
+   * is enabled and the suffix actually matches the table's first/last period,
+   * so we never accidentally cut off part of a real title.
    */
-  cleanTableLabel(label) {
-    return label.replace(/^\d+:\s*/, '');
+  cleanTableLabel(label, firstPeriod, lastPeriod) {
+    let cleaned = label.replace(/^\d+:\s*/, '');
+    if (AppConfig.ui.hidePeriodInTableTitles) {
+      cleaned = this.stripTrailingPeriod(cleaned, firstPeriod, lastPeriod);
+    }
+    return cleaned;
+  },
+
+  /**
+   * Remove the trailing time period from a table title when it matches the
+   * recoded first/last period shown in the "Tidsperiode" column.
+   *
+   * Handles both simple ranges ("2010-2025", "2016M01-2025M12") and titles
+   * where each endpoint is itself a range, written with parentheses
+   * ("(1990-2000)-(2024-2025)"). When first and last period are equal, a single
+   * period at the end ("2025" or "(2025)") is matched too.
+   */
+  stripTrailingPeriod(label, firstPeriod, lastPeriod) {
+    const fp = (firstPeriod || '').trim();
+    const lp = (lastPeriod || '').trim();
+    if (!fp && !lp) return label;
+
+    const candidates = [];
+    if (fp && lp) {
+      if (fp === lp) {
+        candidates.push(fp, `(${fp})`);
+      } else {
+        candidates.push(`(${fp})-(${lp})`, `${fp}-${lp}`);
+      }
+    } else {
+      const single = fp || lp;
+      candidates.push(single, `(${single})`);
+    }
+
+    const trimmed = label.replace(/\s+$/, '');
+    for (const candidate of candidates) {
+      if (candidate && trimmed.endsWith(candidate)) {
+        // Drop the period, then any trailing separator (". ", " ", "-", ":", ",").
+        return trimmed
+          .slice(0, trimmed.length - candidate.length)
+          .replace(/[\s.,:;-]+$/, '');
+      }
+    }
+    return label;
   },
 
   /**

@@ -148,6 +148,13 @@ const AppConfig = {
     // Show discontinued tables by default in search and topic views
     showDiscontinuedByDefault: false,
 
+    // Skjul tidsperioden som ofte står på slutten av SSB-tabelltitler i
+    // listevisningen (søk, emner, forsiden), f.eks. "Konsumprisindeks 2010-2025"
+    // → "Konsumprisindeks". Perioden vises uansett i egen "Tidsperiode"-kolonne.
+    // Suffikset fjernes kun når det faktisk matcher start-/sluttperioden som
+    // vises i kolonnen (også flerårige intervaller som "(1990-2000)-(2024-2025)").
+    hidePeriodInTableTitles: true,
+
     // Antall stinivåer under et emne som vises som navigasjonskort før
     // tabellisten vises i emnevisningen. SSB: 2 (undertema + kategori).
     // Andre PxWebApi-instanser med grunnere hierarki kan bruke lavere verdi;
