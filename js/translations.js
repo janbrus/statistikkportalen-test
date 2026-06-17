@@ -81,7 +81,7 @@ const translations = {
     'search.noResults':     'Ingen tabeller funnet',
     'search.showingFirst':  'Viser de første 100 av {0} resultater i denne gruppen',
     'search.includeStopped': 'Inkluder avsluttede tabeller',
-    'search.enhanced':      'Forbedret søk',
+    'search.enhanced':      'Utvidet søk',
     'search.beta':          'beta',
 
     // Filters (shared between search and topic views)
@@ -576,7 +576,7 @@ const translations = {
     'search.noResults':      'Inga tabeller hittades',
     'search.showingFirst':   'Visar de f\u00F6rsta 100 av {0} resultat i denna grupp',
     'search.includeStopped': 'Inkludera avslutade tabeller',
-    'search.enhanced':       'F\u00F6rb\u00E4ttrad s\u00F6kning',
+    'search.enhanced':       'Utvidgad s\u00F6kning',
     'search.beta':           'beta',
 
     'filter.allSubjects':    'Alla \u00E4mnen',

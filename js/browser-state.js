@@ -22,7 +22,7 @@ const BrowserState = {
     subjectFilter: '',
     frequencyFilter: '',
     updatedFilter: '',
-    enhanced: false
+    enhanced: true
   },
 
   // Lazy search index for enhanced mode (built on first use, cached forever)
@@ -95,7 +95,7 @@ const BrowserState = {
     if (this.searchFilters.subjectFilter) params.subj = this.searchFilters.subjectFilter;
     if (this.searchFilters.frequencyFilter) params.freq = this.searchFilters.frequencyFilter;
     if (this.searchFilters.updatedFilter) params.upd = this.searchFilters.updatedFilter;
-    if (this.searchFilters.enhanced) params.enh = '1';
+    if (!this.searchFilters.enhanced) params.enh = '0';
     return params;
   },
 
@@ -108,7 +108,7 @@ const BrowserState = {
     this.searchFilters.subjectFilter = params.subj || '';
     this.searchFilters.frequencyFilter = params.freq || '';
     this.searchFilters.updatedFilter = params.upd || '';
-    this.searchFilters.enhanced = params.enh === '1';
+    this.searchFilters.enhanced = params.enh !== '0';
   },
 
   /**

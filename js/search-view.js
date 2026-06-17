@@ -58,7 +58,7 @@ async function renderSearchView(container) {
 
         <label class="filter-checkbox">
           <input type="checkbox" id="enhanced-search" ${filters.enhanced ? 'checked' : ''} />
-          <span>${t('search.enhanced')} <span class="beta-badge">${t('search.beta')}</span></span>
+          <span>${t('search.enhanced')}</span>
         </label>
 
         <select id="subject-filter" class="filter-select">
@@ -189,6 +189,9 @@ async function _searchPerformSearch() {
 
   // Update URL without triggering re-render
   URLRouter.navigateTo('search', BrowserState.searchFiltersToParams(), false);
+
+  // Keep the page title in sync with the latest search term
+  updatePageTitle(query ? [query] : [t('nav.search')]);
 
   // If no query and no filters, show welcome
   if (!query && !subjectFilter && !frequencyFilter && !updatedFilter) {
