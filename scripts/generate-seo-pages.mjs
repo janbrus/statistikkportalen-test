@@ -781,7 +781,7 @@ function renderRootPage(template, site, appConfig, pages, totalTables) {
 
   const sourceName = appConfig.source.nameFull || appConfig.source.name;
   const title = `${appConfig.app.name} – utforsk statistikk fra ${appConfig.source.name}`;
-  const description = `Søk i ${formatCount(totalTables)} statistikktabeller fra ${sourceName}. Statistikkportalen gir det bedre tilgang til dataene i SSBs statistikkbank. Utforsk, filtrer og last ned tall.`;
+  const description = `Søk i ${formatCount(totalTables)} statistikktabeller fra ${sourceName}. Statistikkportalen gir deg bedre tilgang til dataene i SSBs statistikkbank. Utforsk, filtrer og last ned tall.`;
 
   html = mustReplace(html, /<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`, '<title> (forside)');
   html = mustReplace(
