@@ -40,6 +40,22 @@ const AppConfig = {
   },
 
   /**
+   * Instance-specific web analytics (Umami).
+   * Injected into <head> at startup by the bootstrap snippet in index.html.
+   * Set to null (or leave scriptUrl/websiteId empty) to disable analytics
+   * entirely — useful for local development or instances without tracking.
+   *
+   * For a separate instance (e.g. the Swedish SCB portal), point scriptUrl
+   * and websiteId at that instance's own Umami site.
+   */
+  analytics: {
+    scriptUrl: 'https://stats.statistikkportalen.no/script.js',
+    websiteId: 'e8e31e32-aa40-4865-8acb-3311b8a374e9',
+    domains: 'statistikkportalen.no',
+    doNotTrack: true
+  },
+
+  /**
    * Available UI languages.
    * code:    UI language code (used for translations.js lookup)
    * apiLang: Language code sent to the API (lang= parameter)

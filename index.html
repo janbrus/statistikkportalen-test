@@ -16,8 +16,8 @@
   <!-- Uten JavaScript: skjul JS-avhengige småelementer (footer-lenker o.l.) -->
   <noscript><style>.js-only { display: none !important; }</style></noscript>
 
-  <!-- Analytics -->
-  <script defer src="https://stats.statistikkportalen.no/script.js" data-website-id="e8e31e32-aa40-4865-8acb-3311b8a374e9" data-domains="statistikkportalen.no" data-do-not-track="true"></script>
+  <!-- Analytics injiseres fra AppConfig.analytics (se js/config.js) rett etter
+       config.js er lastet nederst i <body>. -->
 
   <!-- Stylesheets -->
   <link rel="stylesheet" href="css/main.css">
@@ -70,6 +70,23 @@
   <!-- Cache busting: ?v= must match VERSION in version.js. When bumping VERSION, update all ?v= here too. -->
   <script src="js/version.js"></script>
   <script src="js/config.js?v=1.4.2"></script>
+
+  <!-- Analytics: injiser Umami-scriptet fra AppConfig.analytics. Slås av
+       ved å sette analytics til null (eller tomt scriptUrl/websiteId) i config.js. -->
+  <script>
+    (function () {
+      var a = (window.AppConfig && window.AppConfig.analytics) || null;
+      if (!a || !a.scriptUrl || !a.websiteId) return;
+      var s = document.createElement('script');
+      s.defer = true;
+      s.src = a.scriptUrl;
+      s.setAttribute('data-website-id', a.websiteId);
+      if (a.domains) s.setAttribute('data-domains', a.domains);
+      if (a.doNotTrack) s.setAttribute('data-do-not-track', 'true');
+      document.head.appendChild(s);
+    })();
+  </script>
+
   <script src="js/translations.js?v=1.4.2"></script>
   <script src="js/cache.js?v=1.4.2"></script>
   <script src="js/api.js?v=1.4.2"></script>
