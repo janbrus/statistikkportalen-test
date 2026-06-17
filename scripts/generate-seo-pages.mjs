@@ -140,12 +140,40 @@ function loadAppConfig() {
   return cfg;
 }
 
-function loadSubjectConfig() {
+/** Velg riktig språk fra en flerspråklig {språk: tekst}-label (js/subjects.js).
+ *  Tåler også en ren streng for bakoverkompatibilitet. */
+function pickLabel(value, uiLang) {
+  if (value && typeof value === 'object') {
+    return value[uiLang] || value.nb || Object.values(value)[0] || '';
+  }
+  return value;
+}
+
+/** UI-språkkoden for standardspråket (SSB: 'nb'). */
+function uiLang(appConfig) {
+  return appConfig.defaultLanguage || appConfig.languages?.[0]?.code || 'nb';
+}
+
+/**
+ * Leser SubjectConfig fra js/subjects.js og løser de flerspråklige
+ * meny-labelene (group.label / subjectNames) ned til standardspråkets streng,
+ * slik at resten av scriptet kan behandle dem som rene strenger.
+ */
+function loadSubjectConfig(appConfig) {
   const cfg = loadBrowserGlobal('subjects.js', 'SubjectConfig');
   if (!cfg.subjectGroups || !cfg.subjectNames) {
     throw new Error('SubjectConfig fra js/subjects.js mangler subjectGroups/subjectNames');
   }
-  return cfg;
+  const lang = uiLang(appConfig);
+  const subjectGroups = {};
+  for (const [id, group] of Object.entries(cfg.subjectGroups)) {
+    subjectGroups[id] = { ...group, label: pickLabel(group.label, lang) };
+  }
+  const subjectNames = {};
+  for (const [code, name] of Object.entries(cfg.subjectNames)) {
+    subjectNames[code] = pickLabel(name, lang);
+  }
+  return { ...cfg, subjectGroups, subjectNames };
 }
 
 /** API-språkkoden for standardspråket (SSB: 'no'). */
@@ -943,7 +971,7 @@ async function main() {
   loadTemplate(args.webroot);
 
   const appConfig = loadAppConfig();
-  const subjectConfig = loadSubjectConfig();
+  const subjectConfig = loadSubjectConfig(appConfig);
   console.log(`[SEO] API: ${appConfig.apiBaseUrl} (${appConfig.app.name})`);
 
   const tables = await fetchAllTables(appConfig, args.minTables);

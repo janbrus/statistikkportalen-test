@@ -241,40 +241,10 @@ const translations = {
     'search.found': 'funnet',
 
     // Language selector
-    'lang.label': 'Spr\u00E5k',
+    'lang.label': 'Spr\u00E5k'
 
-    // Subject group labels (SSB taxonomy — translatable)
-    'subject.group.arbeid':     'Arbeid, l\u00F8nn og utdanning',
-    'subject.group.befolkning': 'Befolkning og bolig',
-    'subject.group.helse':      'Helse og samfunn',
-    'subject.group.miljo':      'Milj\u00F8 og transport',
-    'subject.group.naring':     'N\u00E6ringsliv og teknologi',
-    'subject.group.okonomi':    '\u00D8konomi',
-
-    // Subject names (SSB subject codes → display names)
-    'subject.name.al': 'Arbeid og l\u00F8nn',
-    'subject.name.if': 'Inntekt og forbruk',
-    'subject.name.ud': 'Utdanning',
-    'subject.name.be': 'Befolkning',
-    'subject.name.bb': 'Bygg, bolig og eiendom',
-    'subject.name.in': 'Innvandring og innvandrere',
-    'subject.name.he': 'Helse',
-    'subject.name.kf': 'Kultur og fritid',
-    'subject.name.sk': 'Sosiale forhold og kriminalitet',
-    'subject.name.sv': 'Svalbard',
-    'subject.name.va': 'Valg',
-    'subject.name.nm': 'Natur og milj\u00F8',
-    'subject.name.tr': 'Transport og reiseliv',
-    'subject.name.ei': 'Energi og industri',
-    'subject.name.js': 'Jord, skog, jakt og fiskeri',
-    'subject.name.ti': 'Teknologi og innovasjon',
-    'subject.name.vt': 'Varehandel og tjenesteyting',
-    'subject.name.vf': 'Bedrifter, foretak og regnskap',
-    'subject.name.bf': 'Bank og finansmarked',
-    'subject.name.nk': 'Nasjonalregnskap og konjunkturer',
-    'subject.name.os': 'Offentlig sektor',
-    'subject.name.pp': 'Priser og prisindekser',
-    'subject.name.ut': 'Utenriks\u00F8konomi'
+    // NB: subject.group.* / subject.name.* defineres i js/subjects.js og
+    // registreres derfra i denne ordboka ved oppstart.
   },
 
   // -------------------------------------------------------------------------
@@ -484,38 +454,10 @@ const translations = {
     // Search
     'search.found': 'found',
 
-    'lang.label': 'Language',
+    'lang.label': 'Language'
 
-    'subject.group.arbeid':     'Work, wages and education',
-    'subject.group.befolkning': 'Population and housing',
-    'subject.group.helse':      'Health and society',
-    'subject.group.miljo':      'Environment and transport',
-    'subject.group.naring':     'Business and technology',
-    'subject.group.okonomi':    'Economy',
-
-    'subject.name.al': 'Work and wages',
-    'subject.name.if': 'Income and consumption',
-    'subject.name.ud': 'Education',
-    'subject.name.be': 'Population',
-    'subject.name.bb': 'Building, housing and real estate',
-    'subject.name.in': 'Immigration and immigrants',
-    'subject.name.he': 'Health',
-    'subject.name.kf': 'Culture and leisure',
-    'subject.name.sk': 'Social conditions and crime',
-    'subject.name.sv': 'Svalbard',
-    'subject.name.va': 'Elections',
-    'subject.name.nm': 'Nature and environment',
-    'subject.name.tr': 'Transport and tourism',
-    'subject.name.ei': 'Energy and industry',
-    'subject.name.js': 'Land, forest, hunting and fishing',
-    'subject.name.ti': 'Technology and innovation',
-    'subject.name.vt': 'Retail and services',
-    'subject.name.vf': 'Enterprises, companies and accounting',
-    'subject.name.bf': 'Banking and financial markets',
-    'subject.name.nk': 'National accounts and business cycles',
-    'subject.name.os': 'Public sector',
-    'subject.name.pp': 'Prices and price indices',
-    'subject.name.ut': 'External economy'
+    // NB: subject.group.* / subject.name.* defineres i js/subjects.js og
+    // registreres derfra i denne ordboka ved oppstart.
   },
 
   // -------------------------------------------------------------------------
@@ -725,38 +667,10 @@ const translations = {
     // Search
     'search.found': 'hittade',
 
-    'lang.label': 'Spr\u00E5k',
+    'lang.label': 'Spr\u00E5k'
 
-    'subject.group.arbeid':     'Arbete, l\u00F6n och utbildning',
-    'subject.group.befolkning': 'Befolkning och bostad',
-    'subject.group.helse':      'H\u00E4lsa och samh\u00E4lle',
-    'subject.group.miljo':      'Milj\u00F6 och transport',
-    'subject.group.naring':     'N\u00E4ringsliv och teknologi',
-    'subject.group.okonomi':    'Ekonomi',
-
-    'subject.name.al': 'Arbete och l\u00F6n',
-    'subject.name.if': 'Inkomst och konsumtion',
-    'subject.name.ud': 'Utbildning',
-    'subject.name.be': 'Befolkning',
-    'subject.name.bb': 'Bygg, bostad och fastighet',
-    'subject.name.in': 'Invandring och invandrare',
-    'subject.name.he': 'H\u00E4lsa',
-    'subject.name.kf': 'Kultur och fritid',
-    'subject.name.sk': 'Sociala f\u00F6rh\u00E5llanden och brottslighet',
-    'subject.name.sv': 'Svalbard',
-    'subject.name.va': 'Val',
-    'subject.name.nm': 'Natur och milj\u00F6',
-    'subject.name.tr': 'Transport och turism',
-    'subject.name.ei': 'Energi och industri',
-    'subject.name.js': 'Jord, skog, jakt och fiske',
-    'subject.name.ti': 'Teknologi och innovation',
-    'subject.name.vt': 'Varuhandel och tj\u00E4nster',
-    'subject.name.vf': 'F\u00F6retag och bokf\u00F6ring',
-    'subject.name.bf': 'Bank och finansmarknad',
-    'subject.name.nk': 'Nationalr\u00E4kenskaper och konjunktur',
-    'subject.name.os': 'Offentlig sektor',
-    'subject.name.pp': 'Priser och prisindex',
-    'subject.name.ut': 'Utrikeshandel'
+    // NB: subject.group.* / subject.name.* defineres i js/subjects.js og
+    // registreres derfra i denne ordboka ved oppstart.
   }
 };
 
