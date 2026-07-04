@@ -165,13 +165,24 @@ const AppState = {
 
 // ========== View Rendering Router ==========
 
+let _seoHomeTitleKept = false;
+
 function renderCurrentView() {
   const content = document.getElementById('content');
   if (!content) return;
 
+  if (window.SEOHead) SEOHead.sync();
+
   switch(AppState.currentView) {
     case 'home':
-      updatePageTitle([]);
+      // Pre-rendret forside har en emnerik tittel som skal stå i Googles
+      // snapshot — behold den ved første rendring, men bare da (navigerer
+      // brukeren bort og hjem igjen, må tittelen tilbakestilles som vanlig)
+      if (seoContentMatchesRoute([]) && !_seoHomeTitleKept) {
+        _seoHomeTitleKept = true;
+      } else {
+        updatePageTitle([]);
+      }
       renderFrontPage(content);
       break;
     case 'search':
@@ -288,6 +299,7 @@ function extractTableTitle(label) {
  */
 function updatePageTitle(parts) {
   document.title = [...parts, AppConfig.app?.name || 'Statistikkportalen'].join(' – ');
+  if (window.SEOHead) SEOHead.syncTitle();
 }
 
 /**
@@ -301,6 +313,16 @@ function updatePageTitle(parts) {
 function seoContentMatchesRoute(topicPath) {
   const seoPath = window.__SEO_TOPIC_PATH__;
   return Array.isArray(seoPath) && seoPath.join('/') === (topicPath || []).join('/');
+}
+
+/**
+ * True når siden er en pre-rendret tabellside (/table/{id}/ fra SEO-generatoren)
+ * for nettopp denne tabellen — da skal den genererte tittelen stå urørt.
+ * @param {string} tableId - Tabell-id fra ruten
+ * @returns {boolean}
+ */
+function seoTableMatchesRoute(tableId) {
+  return !!window.__SEO_TABLE_ID__ && String(window.__SEO_TABLE_ID__) === String(tableId);
 }
 
 /**

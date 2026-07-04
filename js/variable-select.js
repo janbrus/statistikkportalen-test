@@ -57,7 +57,11 @@ async function renderVariableSelection(container) {
   }
 
   const table = AppState.selectedTable;
-  updatePageTitle([extractTableTitle(table.label), t('variable.heading')]);
+  // Pre-rendrede tabellsider (/table/{id}/) har en generert tittel som skal stå
+  // urørt i Googlebots snapshot — ikke overskriv med plassholder-/lastetittel.
+  if (!seoTableMatchesRoute(table.id)) {
+    updatePageTitle([extractTableTitle(table.label), t('variable.heading')]);
+  }
 
   await BrowserState.init();
 
@@ -65,7 +69,9 @@ async function renderVariableSelection(container) {
   const realTable = BrowserState.allTables.find(t => t.id === table.id);
   if (realTable) {
     AppState.selectedTable.label = realTable.label;
-    updatePageTitle([extractTableTitle(table.label), t('variable.heading')]);
+    if (!seoTableMatchesRoute(table.id)) {
+      updatePageTitle([extractTableTitle(table.label), t('variable.heading')]);
+    }
   }
 
   container.innerHTML = `

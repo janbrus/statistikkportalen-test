@@ -65,10 +65,14 @@ Applikasjonen kan tilpasses andre systemer som bruker PxWebApi v2, eksempelvis S
 ## SEO-sider (pre-rendering)
 Appen er hash-rutet (`#topic/...`), som er usynlig for søkemotorer. `scripts/generate-seo-pages.mjs`
 genererer derfor statiske, crawlbare emnesider med pene URL-er
-(f.eks. `/okonomi/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/`) direkte i webroot,
-pluss `sitemap.xml` og `robots.txt`. Sidene er fulle app-skall: brukere som lander der
-overføres umiddelbart til den tilsvarende `#topic/...`-URL-en uten omlasting
-(via `window.__SEO_TOPIC_PATH__`-bootstrapen i `index.html`).
+(f.eks. `/okonomi/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/`) og én side per
+tabell, også avsluttede (`/table/{id}/`, Dataset-enes kanoniske landingssider for Google
+Dataset Search)
+direkte i webroot, pluss `sitemap.xml`, `robots.txt` og `seo-map.json` (rute → kanonisk URL,
+brukes av `js/seo-head.js` til å holde canonical/og:-tagger i synk ved navigering i appen).
+Sidene er fulle app-skall: brukere som lander der overføres umiddelbart til den tilsvarende
+`#topic/...`- eller `#variables/{id}`-URL-en uten omlasting (via `window.__SEO_TOPIC_PATH__`-/
+`window.__SEO_TABLE_ID__`-bootstrapen i `index.html`).
 
 Kjøres periodisk på serveren med cron (krever Node 18+):
 ```

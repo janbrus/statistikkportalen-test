@@ -3,13 +3,20 @@
  * SEO-sidegenerator for Statistikkportalen.
  *
  * Genererer statiske, crawlbare emnesider (pene URL-er som
- * /okonomi/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/) i webroot,
- * pluss sitemap.xml og robots.txt. Hver side er et fullt app-skall basert på
- * den deployede index.html: crawlere ser statisk innhold (brodsmuler,
- * underemner, tabelliste) og JSON-LD strukturerte data (BreadcrumbList +
- * DataCatalog/Dataset for Google Dataset Search), mens appen ved lasting
- * bytter URL til den kanoniske hash-ruten (#topic/...) via
- * window.__SEO_TOPIC_PATH__ (se bootstrap-snutten i index.html).
+ * /okonomi/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/) og én side per
+ * tabell, også avsluttede (/table/{id}/) i webroot, pluss sitemap.xml, robots.txt og
+ * seo-map.json (rute → kanonisk URL, brukes av js/seo-head.js). Hver side er
+ * et fullt app-skall basert på den deployede index.html: crawlere ser statisk
+ * innhold (brodsmuler, underemner, tabelliste) og JSON-LD strukturerte data
+ * (BreadcrumbList + DataCatalog/Dataset for Google Dataset Search), mens
+ * appen ved lasting bytter URL til den kanoniske hash-ruten (#topic/... eller
+ * #variables/{id}) via window.__SEO_TOPIC_PATH__ / window.__SEO_TABLE_ID__
+ * (se bootstrap-snutten i index.html).
+ *
+ * Tabellsidene er Dataset-enes kanoniske landingssider: Google ignorerer
+ * #-fragmenter, så Dataset.url må peke på en ekte URL med markup — aldri
+ * /#variables/{id}. hreflang genereres ikke (engelsk finnes kun som
+ * klientside-språkbytte, ikke som egne URL-er).
  *
  * Sidedybden speiler appen (topic-view.js): nivåer t.o.m. AppConfig.ui
  * .topicCardDepth får egne sider med lenker til undersidene, mens første nivå
@@ -54,6 +61,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'js', 'css', 'scripts', 'assets', 'img', 'images', 'fonts',
   'index.html', 'test.html', 'api-explorer.html',
   'robots.txt', 'sitemap.xml', 'favicon.ico',
+  'table', 'seo-map.json',
 ]);
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -477,6 +485,9 @@ function loadTemplate(webroot) {
   if (!template.includes('__SEO_TOPIC_PATH__')) {
     throw new Error('Deployet index.html mangler __SEO_TOPIC_PATH__-bootstrapen — deploy appversjonen med SEO-støtte (v1.4.1+) først.');
   }
+  if (!template.includes('__SEO_TABLE_ID__')) {
+    throw new Error('Deployet index.html mangler __SEO_TABLE_ID__-bootstrapen — deploy appversjonen med tabellside-støtte (v1.5.0+) først.');
+  }
   return template;
 }
 
@@ -491,6 +502,27 @@ function mustReplace(html, regex, replacement, what) {
 // Google trunkerer snippets rundt 155–160 tegn — hele beskrivelsen må holde seg innenfor
 const MAX_DESCRIPTION_LENGTH = 155;
 
+/** Fjern id-prefiks fra tabelletiketter («13760: Befolkning…» → «Befolkning…»),
+ *  samme regel som extractTableTitle() i js/utils.js. */
+function cleanLabel(label) {
+  return String(label || '').replace(/^\d+:\s*/, '');
+}
+
+/** Kommaseparert liste med så mange hele elementer som får plass i budsjettet;
+ *  tom streng hvis ikke engang det første elementet får plass. */
+function fitList(items, budget) {
+  let out = '';
+  for (const item of items) {
+    const next = out ? `${out}, ${item}` : item;
+    if (next.length > budget) {
+      if (out) out += '…';
+      break;
+    }
+    out = next;
+  }
+  return out;
+}
+
 function buildDescription(page, appConfig) {
   const n = page.activeCount;
   const sourceName = appConfig.source.nameFull || appConfig.source.name;
@@ -498,19 +530,20 @@ function buildDescription(page, appConfig) {
   const childLabels = page.children.length > 0
     ? page.children.map(c => c.label)
     : (page.sections || []).map(s => s.label);
-  // «Omfatter A, B, …» med så mange hele barnenavn som får plass i budsjettet;
-  // droppes helt hvis ikke engang det første navnet får plass
-  const budget = MAX_DESCRIPTION_LENGTH - desc.length - ' Omfatter .'.length;
-  let childPart = '';
-  for (const childLabel of childLabels) {
-    const next = childPart ? `${childPart}, ${childLabel}` : childLabel;
-    if (next.length > budget) {
-      if (childPart) childPart += '…';
-      break;
-    }
-    childPart = next;
-  }
+  // «Omfatter A, B, …» — droppes helt hvis ikke engang det første navnet får plass
+  const childPart = fitList(childLabels, MAX_DESCRIPTION_LENGTH - desc.length - ' Omfatter .'.length);
   if (childPart) desc += ` Omfatter ${childPart}.`;
+  return desc;
+}
+
+function buildTableDescription(t, appConfig) {
+  const sourceName = appConfig.source.nameFull || appConfig.source.name;
+  const periodPart = t.firstPeriod && t.lastPeriod
+    ? ` med tall for perioden ${t.firstPeriod}–${t.lastPeriod}` : '';
+  let desc = `${t.discontinued ? 'Avsluttet statistikktabell' : 'Statistikktabell'} ${t.id} fra ${sourceName}${periodPart}.`;
+  const names = Array.isArray(t.variableNames) ? t.variableNames : [];
+  const varPart = fitList(names, MAX_DESCRIPTION_LENGTH - desc.length - ' Variabler: .'.length);
+  if (varPart) desc += ` Variabler: ${varPart}.`;
   return desc;
 }
 
@@ -523,7 +556,8 @@ function formatDateNo(iso) {
 function tableListHtml(tables) {
   const items = tables.map(t => {
     const updated = t.updated ? ` <small>(oppdatert ${escapeHtml(formatDateNo(t.updated))})</small>` : '';
-    return `<li><a href="/#variables/${escapeAttr(t.id)}">${escapeHtml(t.label)}</a>${updated}</li>`;
+    // Pen URL (ikke /#variables/) så crawlere oppdager tabellsidene
+    return `<li><a href="/table/${escapeAttr(t.id)}/">${escapeHtml(t.label)}</a>${updated}</li>`;
   });
   return `<ul>${items.join('\n')}</ul>`;
 }
@@ -604,6 +638,36 @@ function isoPeriod(period) {
 }
 
 /**
+ * Ett Dataset-objekt (schema.org) for en tabell. url peker alltid på tabellens
+ * egen statiske side /table/{id}/ — Dataset-ets kanoniske landingsside.
+ */
+function datasetJsonLd(t, site, appConfig) {
+  const source = appConfig.source;
+  const creator = {
+    '@type': 'Organization',
+    name: source.nameFull || source.name,
+    url: source.url,
+  };
+  const periodPart = t.firstPeriod && t.lastPeriod
+    ? ` med tall for perioden ${t.firstPeriod}–${t.lastPeriod}` : '';
+  const coverage = isoPeriod(t.firstPeriod) && isoPeriod(t.lastPeriod)
+    ? `${isoPeriod(t.firstPeriod)}/${isoPeriod(t.lastPeriod)}` : null;
+  return {
+    '@type': 'Dataset',
+    name: t.label,
+    description: `${t.label}. ${t.discontinued ? 'Avsluttet statistikktabell' : 'Statistikktabell'} ${t.id} fra ${creator.name}${periodPart}.`,
+    identifier: t.id,
+    url: `${site}/table/${t.id}/`,
+    isAccessibleForFree: true,
+    ...(coverage ? { temporalCoverage: coverage } : {}),
+    ...(Array.isArray(t.variableNames) && t.variableNames.length ? { keywords: t.variableNames } : {}),
+    ...(t.updated ? { dateModified: String(t.updated).slice(0, 10) } : {}),
+    ...(source.licenseUrl ? { license: source.licenseUrl } : {}),
+    creator,
+  };
+}
+
+/**
  * Strukturerte data (schema.org JSON-LD): CollectionPage + BreadcrumbList for
  * alle sider, pluss DataCatalog med Dataset per tabell (trigget av Google
  * Dataset Search) på sider som lister tabeller.
@@ -640,35 +704,12 @@ function buildJsonLd(page, site, appConfig) {
 
   const allTables = collectPageTables(page);
   if (allTables.length > 0) {
-    const creator = {
-      '@type': 'Organization',
-      name: source.nameFull || source.name,
-      url: source.url,
-    };
     graph.push({
       '@type': 'DataCatalog',
       name: `${page.label} – ${appConfig.app.name}`,
       url,
       ...(source.licenseUrl ? { license: source.licenseUrl } : {}),
-      dataset: allTables.map(t => {
-        const periodPart = t.firstPeriod && t.lastPeriod
-          ? ` med tall for perioden ${t.firstPeriod}–${t.lastPeriod}` : '';
-        const coverage = isoPeriod(t.firstPeriod) && isoPeriod(t.lastPeriod)
-          ? `${isoPeriod(t.firstPeriod)}/${isoPeriod(t.lastPeriod)}` : null;
-        return {
-          '@type': 'Dataset',
-          name: t.label,
-          description: `${t.label}. Statistikktabell ${t.id} fra ${creator.name}${periodPart}.`,
-          identifier: t.id,
-          url: `${site}/#variables/${t.id}`,
-          isAccessibleForFree: true,
-          ...(coverage ? { temporalCoverage: coverage } : {}),
-          ...(Array.isArray(t.variableNames) && t.variableNames.length ? { keywords: t.variableNames } : {}),
-          ...(t.updated ? { dateModified: String(t.updated).slice(0, 10) } : {}),
-          ...(source.licenseUrl ? { license: source.licenseUrl } : {}),
-          creator,
-        };
-      }),
+      dataset: allTables.map(t => datasetJsonLd(t, site, appConfig)),
     });
   }
 
@@ -698,12 +739,13 @@ function renderPage(template, page, site, appConfig) {
   // Relative asset-stier → absolutte (sidene ligger 1–4 mapper dypt)
   html = html.replace(/href="css\//g, 'href="/css/').replace(/src="js\//g, 'src="/js/');
 
-  // JSON-LD strukturerte data ("<" escapes så "</script>" i labels ikke kan bryte ut)
+  // JSON-LD strukturerte data ("<" escapes så "</script>" i labels ikke kan bryte ut).
+  // id="seo-jsonld" lar appen (js/seo-head.js) fjerne den ved navigering bort.
   const jsonLd = JSON.stringify(buildJsonLd(page, site, appConfig)).replace(/</g, '\\u003c');
   html = mustReplace(
     html,
     /<\/head>/,
-    `  <script type="application/ld+json">${jsonLd}</script>\n</head>`,
+    `  <script type="application/ld+json" id="seo-jsonld">${jsonLd}</script>\n</head>`,
     '</head> (JSON-LD)'
   );
 
@@ -731,6 +773,156 @@ function matchContentDiv(html) {
     throw new Error('<div id="content"> i malen har uventet mye innhold — strukturen kan ha endret seg, oppdater scriptet.');
   }
   return match;
+}
+
+// ---------------------------------------------------------------------------
+// Tabellsider (/table/{id}/): Dataset-enes kanoniske landingssider
+// ---------------------------------------------------------------------------
+
+/**
+ * Én side per tabell — også avsluttede (historiske tall er søkbare og
+ * tilgjengelige i portalen). Brødsmule-forelderen er den dypeste emnesiden
+ * langs tabellens første sti (paths[0], konsistent med appens
+ * buildNavigationBreadcrumb) — emnesider finnes bare t.o.m. cardDepth+1,
+ * mens tabellstiene kan gå dypere.
+ */
+function buildTableEntries(tables, pages) {
+  const pageByHashPath = new Map(pages.map(p => [p.hashPath.join('/'), p]));
+  const entries = new Map();
+  for (const t of tables) {
+    if (entries.has(t.id)) continue;
+    if (!/^[\w-]+$/.test(t.id)) {
+      console.warn(`[SEO] Hopper over tabell med uventet id: ${JSON.stringify(t.id)}`);
+      continue;
+    }
+    let crumbPage = null;
+    const firstPath = (t.paths && t.paths[0]) || [];
+    for (let len = firstPath.length; len > 0 && !crumbPage; len--) {
+      crumbPage = pageByHashPath.get(firstPath.slice(0, len).map(seg => seg.id).join('/')) || null;
+    }
+    entries.set(t.id, { id: t.id, dir: `table/${t.id}`, table: t, crumbPage });
+  }
+  return [...entries.values()];
+}
+
+function buildTableContentHtml(entry, appConfig) {
+  const t = entry.table;
+  const label = cleanLabel(t.label);
+  const src = appConfig.source;
+  const parts = [];
+
+  const crumbs = [`<a class="breadcrumb-link" href="/">${escapeHtml(appConfig.app.name)}</a>`];
+  if (entry.crumbPage) {
+    for (const crumb of entry.crumbPage.breadcrumbs) {
+      crumbs.push(`<a class="breadcrumb-link" href="/${escapeAttr(crumb.dir)}/">${escapeHtml(crumb.label)}</a>`);
+    }
+    const crumbDir = entry.crumbPage.canonicalDir || entry.crumbPage.dir;
+    crumbs.push(`<a class="breadcrumb-link" href="/${escapeAttr(crumbDir)}/">${escapeHtml(entry.crumbPage.label)}</a>`);
+  }
+  crumbs.push(`<span class="breadcrumb-current" aria-current="page">${escapeHtml(label)}</span>`);
+  parts.push(`<nav class="breadcrumbs" aria-label="Brodsmulesti">${crumbs.join('<span class="breadcrumb-sep">/</span>')}</nav>`);
+
+  parts.push(`<h1>${escapeHtml(label)}</h1>`);
+  parts.push(`<p>${escapeHtml(buildTableDescription(t, appConfig))}</p>`);
+
+  const meta = [`Tabell-ID: ${escapeHtml(t.id)}`];
+  if (t.discontinued) meta.push('Status: Avsluttet — tabellen oppdateres ikke lenger, men tallene er fortsatt tilgjengelige');
+  if (t.firstPeriod && t.lastPeriod) meta.push(`Tidsperiode: ${escapeHtml(t.firstPeriod)}–${escapeHtml(t.lastPeriod)}`);
+  if (t.updated) meta.push(`Sist oppdatert: ${escapeHtml(formatDateNo(t.updated))}`);
+  const license = src.licenseUrl
+    ? ` (<a href="${escapeAttr(src.licenseUrl)}" rel="noopener noreferrer">${escapeHtml(src.licenseName || 'lisens')}</a>)` : '';
+  meta.push(`Kilde: <a href="${escapeAttr(src.url)}" rel="noopener noreferrer">${escapeHtml(src.nameFull || src.name)}</a>${license}`);
+  parts.push(`<ul>${meta.map(m => `<li>${m}</li>`).join('\n')}</ul>`);
+
+  if (Array.isArray(t.variableNames) && t.variableNames.length > 0) {
+    parts.push('<h2>Variabler i tabellen</h2>');
+    parts.push(`<ul>${t.variableNames.map(v => `<li>${escapeHtml(v)}</li>`).join('\n')}</ul>`);
+  }
+
+  parts.push(`<p><a href="/#variables/${escapeAttr(t.id)}">Åpne tabellen i ${escapeHtml(appConfig.app.name)}</a> — velg variabler, se og last ned tallene.</p>`);
+  if (entry.crumbPage) {
+    const crumbDir = entry.crumbPage.canonicalDir || entry.crumbPage.dir;
+    parts.push(`<p><a href="/${escapeAttr(crumbDir)}/">Flere tabeller om ${escapeHtml(entry.crumbPage.label.toLowerCase())}</a></p>`);
+  }
+
+  return parts.join('\n      ');
+}
+
+/** Dataset (med katalog-kobling) + BreadcrumbList for en tabellside. */
+function buildTableJsonLd(entry, site, appConfig) {
+  const url = `${site}/table/${entry.id}/`;
+  const graph = [];
+
+  graph.push({
+    ...datasetJsonLd(entry.table, site, appConfig),
+    includedInDataCatalog: { '@type': 'DataCatalog', name: appConfig.app.name, url: `${site}/` },
+  });
+
+  const crumbItems = [{ name: appConfig.app.name, item: `${site}/` }];
+  if (entry.crumbPage) {
+    for (const c of entry.crumbPage.breadcrumbs) {
+      crumbItems.push({ name: c.label, item: `${site}/${c.dir}/` });
+    }
+    const crumbDir = entry.crumbPage.canonicalDir || entry.crumbPage.dir;
+    crumbItems.push({ name: entry.crumbPage.label, item: `${site}/${crumbDir}/` });
+  }
+  crumbItems.push({ name: cleanLabel(entry.table.label), item: url });
+  graph.push({
+    '@type': 'BreadcrumbList',
+    itemListElement: crumbItems.map((c, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: c.name,
+      item: c.item,
+    })),
+  });
+
+  return { '@context': 'https://schema.org', '@graph': graph };
+}
+
+/** Som renderPage(), men for en tabellside (samme mal, samme ankere). */
+function renderTablePage(template, entry, site, appConfig) {
+  const t = entry.table;
+  const url = `${site}/table/${entry.id}/`;
+  const title = `${cleanLabel(t.label)} – ${appConfig.app.name}`;
+  const description = buildTableDescription(t, appConfig);
+
+  let html = template;
+
+  html = mustReplace(html, /<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`, '<title>');
+  html = mustReplace(
+    html,
+    /<meta name="description" content="[^"]*" id="meta-description">/,
+    `<meta name="description" content="${escapeAttr(description)}" id="meta-description">`,
+    'meta description'
+  );
+  html = mustReplace(html, /<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${escapeAttr(url)}">`, 'canonical');
+  html = mustReplace(html, /<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escapeAttr(title)}">`, 'og:title');
+  html = mustReplace(html, /<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${escapeAttr(description)}">`, 'og:description');
+  html = mustReplace(html, /<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${escapeAttr(url)}">`, 'og:url');
+
+  // Relative asset-stier → absolutte (sidene ligger under /table/{id}/)
+  html = html.replace(/href="css\//g, 'href="/css/').replace(/src="js\//g, 'src="/js/');
+
+  const jsonLd = JSON.stringify(buildTableJsonLd(entry, site, appConfig)).replace(/</g, '\\u003c');
+  html = mustReplace(
+    html,
+    /<\/head>/,
+    `  <script type="application/ld+json" id="seo-jsonld">${jsonLd}</script>\n</head>`,
+    '</head> (JSON-LD)'
+  );
+
+  html = mustReplace(
+    html,
+    /(<script src="\/js\/version\.js")/,
+    `<script>window.__SEO_TABLE_ID__=${JSON.stringify(entry.id)};</script>\n  $1`,
+    'script-injeksjon (js/version.js)'
+  );
+
+  matchContentDiv(html);
+  html = html.replace(CONTENT_DIV_RE, `$1\n      ${buildTableContentHtml(entry, appConfig)}\n    $3`);
+
+  return html;
 }
 
 // ---------------------------------------------------------------------------
@@ -835,6 +1027,12 @@ function renderRootPage(template, site, appConfig, pages, totalTables) {
     name: appConfig.app.name,
     url: `${site}/`,
     description,
+    publisher: { '@type': 'Organization', name: appConfig.app.name, url: `${site}/` },
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: { '@type': 'EntryPoint', urlTemplate: `${site}/#search?q={search_term_string}` },
+      'query-input': 'required name=search_term_string',
+    },
   }).replace(/</g, '\\u003c');
   html = mustReplace(
     html,
@@ -856,7 +1054,7 @@ function escapeXml(str) {
     .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
-function buildSitemap(pages, site) {
+function buildSitemap(pages, tableEntries, site) {
   const newest = pages.reduce((max, p) =>
     (p.lastUpdated && (!max || p.lastUpdated > max)) ? p.lastUpdated : max, null);
   const entries = [{ loc: `${site}/`, lastmod: newest ? String(newest).slice(0, 10) : null }];
@@ -867,6 +1065,15 @@ function buildSitemap(pages, site) {
       lastmod: page.lastUpdated ? String(page.lastUpdated).slice(0, 10) : null,
     });
   }
+  for (const entry of tableEntries) {
+    entries.push({
+      loc: `${site}/${entry.dir}/`,
+      lastmod: entry.table.updated ? String(entry.table.updated).slice(0, 10) : null,
+    });
+  }
+  if (entries.length >= 50000) {
+    throw new Error(`sitemap.xml ville fått ${entries.length} URL-er (grensen er 50 000) — del opp i sitemap-indeks.`);
+  }
   const urls = entries.map(e => {
     const lastmod = e.lastmod ? `\n    <lastmod>${e.lastmod}</lastmod>` : '';
     return `  <url>\n    <loc>${escapeXml(e.loc)}</loc>${lastmod}\n  </url>`;
@@ -876,6 +1083,25 @@ function buildSitemap(pages, site) {
 
 function buildRobots(site) {
   return `User-agent: *\nAllow: /\n\nSitemap: ${site}/sitemap.xml\n`;
+}
+
+/**
+ * seo-map.json: rute → kanonisk URL-oppslag for appens head-sync
+ * (js/seo-head.js). topics: hash-sti → pen mappe (duplikater løses til den
+ * primære). tables: id-ene som faktisk har /table/{id}/-sider, så appen
+ * aldri setter canonical mot en side som ikke finnes.
+ */
+function buildSeoMap(pages, tableEntries, site) {
+  const topics = {};
+  for (const page of pages) {
+    topics[page.hashPath.join('/')] = page.canonicalDir || page.dir;
+  }
+  return JSON.stringify({
+    generatedAt: new Date().toISOString(),
+    site,
+    topics,
+    tables: tableEntries.map(e => e.id).sort(),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -901,32 +1127,43 @@ function atomicWrite(filePath, content) {
   fs.renameSync(tmp, filePath);
 }
 
-function main_write(webroot, site, appConfig, pages, totalTables, oldManifest, dryRun) {
-  const newDirs = pages.map(p => p.dir).sort();
-  const sitemap = buildSitemap(pages, site);
+function main_write(webroot, site, appConfig, pages, tableEntries, totalTables, oldManifest, dryRun) {
+  const newDirs = [...pages.map(p => p.dir), ...tableEntries.map(e => e.dir)].sort();
+  const sitemap = buildSitemap(pages, tableEntries, site);
+  const seoMap = buildSeoMap(pages, tableEntries, site);
 
   // robots.txt: skriv kun hvis fraværende eller eid av dette scriptet
   const robotsPath = path.join(webroot, 'robots.txt');
   const robotsOwned = !fs.existsSync(robotsPath) || (oldManifest?.files || []).includes('robots.txt');
-  const newFiles = ['sitemap.xml'];
+  const newFiles = ['sitemap.xml', 'seo-map.json'];
   if (robotsOwned) newFiles.push('robots.txt');
   else console.warn(`[SEO] robots.txt finnes fra før og eies ikke av scriptet — legg til "Sitemap: ${site}/sitemap.xml" manuelt.`);
 
   // Slettekandidater: mapper fra forrige kjøring som ikke lenger genereres
   const oldDirs = oldManifest?.dirs || [];
-  const staleDirs = oldDirs.filter(d => !newDirs.includes(d));
+  const newDirSet = new Set(newDirs);
+  const staleDirs = oldDirs.filter(d => !newDirSet.has(d));
 
   if (dryRun) {
+    const listCap = 20;
     console.log(`\n[SEO] DRY RUN — ingen filer skrives.`);
-    console.log(`[SEO] Ville skrevet forside-innhold i index.html + ${newDirs.length} sider + sitemap.xml${robotsOwned ? ' + robots.txt' : ''}:`);
-    for (const d of newDirs) console.log(`  /${d}/`);
+    console.log(`[SEO] Ville skrevet forside-innhold i index.html + ${pages.length} emnesider + ${tableEntries.length} tabellsider + sitemap.xml + seo-map.json${robotsOwned ? ' + robots.txt' : ''}.`);
+    for (const d of newDirs.slice(0, listCap)) console.log(`  /${d}/`);
+    if (newDirs.length > listCap) console.log(`  … og ${newDirs.length - listCap} til`);
     if (staleDirs.length) {
       console.log(`[SEO] Ville slettet ${staleDirs.length} utdaterte mapper:`);
-      for (const d of staleDirs) console.log(`  /${d}/`);
+      for (const d of staleDirs.slice(0, listCap)) console.log(`  /${d}/`);
+      if (staleDirs.length > listCap) console.log(`  … og ${staleDirs.length - listCap} til`);
     }
+    const template = loadTemplate(webroot);
     const sample = pages.find(p => (p.sections || []).length > 0) || pages[pages.length - 1];
-    console.log(`\n[SEO] Eksempelside (/${sample.dir}/):\n`);
-    console.log(renderPage(loadTemplate(webroot), sample, site, appConfig));
+    console.log(`\n[SEO] Eksempel-emneside (/${sample.dir}/):\n`);
+    console.log(renderPage(template, sample, site, appConfig));
+    const tableSample = tableEntries.find(e => e.crumbPage && (e.table.variableNames || []).length > 0) || tableEntries[0];
+    if (tableSample) {
+      console.log(`\n[SEO] Eksempel-tabellside (/${tableSample.dir}/):\n`);
+      console.log(renderTablePage(template, tableSample, site, appConfig));
+    }
     return;
   }
 
@@ -937,11 +1174,17 @@ function main_write(webroot, site, appConfig, pages, totalTables, oldManifest, d
     fs.mkdirSync(dirPath, { recursive: true });
     atomicWrite(path.join(dirPath, 'index.html'), renderPage(template, page, site, appConfig));
   }
+  for (const entry of tableEntries) {
+    const dirPath = path.join(webroot, entry.dir);
+    fs.mkdirSync(dirPath, { recursive: true });
+    atomicWrite(path.join(dirPath, 'index.html'), renderTablePage(template, entry, site, appConfig));
+  }
   atomicWrite(path.join(webroot, 'index.html'), renderRootPage(template, site, appConfig, pages, totalTables));
-  console.log(`[SEO] Skrev ${pages.length} sider + forside-innhold i index.html.`);
+  console.log(`[SEO] Skrev ${pages.length} emnesider + ${tableEntries.length} tabellsider + forside-innhold i index.html.`);
 
-  // 2) sitemap + robots
+  // 2) sitemap + seo-map + robots
   atomicWrite(path.join(webroot, 'sitemap.xml'), sitemap);
+  atomicWrite(path.join(webroot, 'seo-map.json'), seoMap);
   if (robotsOwned) atomicWrite(robotsPath, buildRobots(site));
 
   // 3) Rydd opp utdaterte mapper (kun index.html + tomme mapper, aldri rekursivt)
@@ -959,7 +1202,7 @@ function main_write(webroot, site, appConfig, pages, totalTables, oldManifest, d
     dirs: newDirs,
     files: newFiles,
   }, null, 2));
-  console.log(`[SEO] Ferdig: ${pages.length} sider, sitemap.xml${robotsOwned ? ', robots.txt' : ''}.`);
+  console.log(`[SEO] Ferdig: ${pages.length} emnesider, ${tableEntries.length} tabellsider, sitemap.xml, seo-map.json${robotsOwned ? ', robots.txt' : ''}.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -978,11 +1221,12 @@ async function main() {
   const hierarchy = buildHierarchy(tables);
   const cardDepth = appConfig.ui?.topicCardDepth ?? 2; // samme terskel som topic-view.js
   const pages = assignCanonicals(buildPages(subjectConfig, hierarchy, cardDepth));
+  const tableEntries = buildTableEntries(tables, pages);
   const totalTables = new Set(tables.map(t => t.id)).size;
-  console.log(`[SEO] Bygde ${pages.length} sider fra ${tables.length} tabeller (kort-dybde ${cardDepth}).`);
+  console.log(`[SEO] Bygde ${pages.length} emnesider + ${tableEntries.length} tabellsider fra ${tables.length} tabeller (kort-dybde ${cardDepth}).`);
 
   const oldManifest = loadManifest(args.webroot);
-  main_write(args.webroot, args.site, appConfig, pages, totalTables, oldManifest, args.dryRun);
+  main_write(args.webroot, args.site, appConfig, pages, tableEntries, totalTables, oldManifest, args.dryRun);
 }
 
 main().catch(err => {
