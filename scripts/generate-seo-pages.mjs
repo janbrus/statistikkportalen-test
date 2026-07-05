@@ -547,6 +547,20 @@ function buildTableDescription(t, appConfig) {
   return desc;
 }
 
+/**
+ * Gyldig ISO-dato (YYYY-MM-DD) fra en API-tidsverdi, ellers null.
+ * SSB-data inneholder enkelte åpenbart ugyldige datoer (f.eks. tabell 04197
+ * med updated "0003-10-13") som Google avviser i sitemap/JSON-LD — slike
+ * droppes heller enn å emitteres.
+ */
+function isoDate(value) {
+  const s = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const year = Number(s.slice(0, 4));
+  if (year < 1900 || year > new Date().getFullYear() + 1) return null;
+  return s;
+}
+
 function formatDateNo(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
@@ -555,7 +569,7 @@ function formatDateNo(iso) {
 
 function tableListHtml(tables) {
   const items = tables.map(t => {
-    const updated = t.updated ? ` <small>(oppdatert ${escapeHtml(formatDateNo(t.updated))})</small>` : '';
+    const updated = isoDate(t.updated) ? ` <small>(oppdatert ${escapeHtml(formatDateNo(t.updated))})</small>` : '';
     // Pen URL (ikke /#variables/) så crawlere oppdager tabellsidene
     return `<li><a href="/table/${escapeAttr(t.id)}/">${escapeHtml(t.label)}</a>${updated}</li>`;
   });
@@ -588,7 +602,7 @@ function buildContentHtml(page, appConfig) {
 
   parts.push(`<h1>${escapeHtml(page.label)}</h1>`);
   parts.push(`<p>${escapeHtml(buildDescription(page, appConfig))}</p>`);
-  if (page.lastUpdated) {
+  if (isoDate(page.lastUpdated)) {
     parts.push(`<p><small>Nyeste tabelloppdatering: ${escapeHtml(formatDateNo(page.lastUpdated))}.</small></p>`);
   }
 
@@ -661,7 +675,7 @@ function datasetJsonLd(t, site, appConfig) {
     isAccessibleForFree: true,
     ...(coverage ? { temporalCoverage: coverage } : {}),
     ...(Array.isArray(t.variableNames) && t.variableNames.length ? { keywords: t.variableNames } : {}),
-    ...(t.updated ? { dateModified: String(t.updated).slice(0, 10) } : {}),
+    ...(isoDate(t.updated) ? { dateModified: isoDate(t.updated) } : {}),
     ...(source.licenseUrl ? { license: source.licenseUrl } : {}),
     creator,
   };
@@ -683,7 +697,7 @@ function buildJsonLd(page, site, appConfig) {
     url,
     description: buildDescription(page, appConfig),
     inLanguage: 'no',
-    ...(page.lastUpdated ? { dateModified: String(page.lastUpdated).slice(0, 10) } : {}),
+    ...(isoDate(page.lastUpdated) ? { dateModified: isoDate(page.lastUpdated) } : {}),
     isPartOf: { '@type': 'WebSite', name: appConfig.app.name, url: `${site}/` },
   });
 
@@ -828,7 +842,7 @@ function buildTableContentHtml(entry, appConfig) {
   const meta = [`Tabell-ID: ${escapeHtml(t.id)}`];
   if (t.discontinued) meta.push('Status: Avsluttet — tabellen oppdateres ikke lenger, men tallene er fortsatt tilgjengelige');
   if (t.firstPeriod && t.lastPeriod) meta.push(`Tidsperiode: ${escapeHtml(t.firstPeriod)}–${escapeHtml(t.lastPeriod)}`);
-  if (t.updated) meta.push(`Sist oppdatert: ${escapeHtml(formatDateNo(t.updated))}`);
+  if (isoDate(t.updated)) meta.push(`Sist oppdatert: ${escapeHtml(formatDateNo(t.updated))}`);
   const license = src.licenseUrl
     ? ` (<a href="${escapeAttr(src.licenseUrl)}" rel="noopener noreferrer">${escapeHtml(src.licenseName || 'lisens')}</a>)` : '';
   meta.push(`Kilde: <a href="${escapeAttr(src.url)}" rel="noopener noreferrer">${escapeHtml(src.nameFull || src.name)}</a>${license}`);
@@ -1057,18 +1071,18 @@ function escapeXml(str) {
 function buildSitemap(pages, tableEntries, site) {
   const newest = pages.reduce((max, p) =>
     (p.lastUpdated && (!max || p.lastUpdated > max)) ? p.lastUpdated : max, null);
-  const entries = [{ loc: `${site}/`, lastmod: newest ? String(newest).slice(0, 10) : null }];
+  const entries = [{ loc: `${site}/`, lastmod: isoDate(newest) }];
   // Kun kanoniske URL-er i sitemap — duplikater canonicaliserer mot en annen URL
   for (const page of pages.filter(p => p.dir === (p.canonicalDir || p.dir))) {
     entries.push({
       loc: `${site}/${page.dir}/`,
-      lastmod: page.lastUpdated ? String(page.lastUpdated).slice(0, 10) : null,
+      lastmod: isoDate(page.lastUpdated),
     });
   }
   for (const entry of tableEntries) {
     entries.push({
       loc: `${site}/${entry.dir}/`,
-      lastmod: entry.table.updated ? String(entry.table.updated).slice(0, 10) : null,
+      lastmod: isoDate(entry.table.updated),
     });
   }
   if (entries.length >= 50000) {
