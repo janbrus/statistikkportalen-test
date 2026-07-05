@@ -486,7 +486,7 @@ function loadTemplate(webroot) {
     throw new Error('Deployet index.html mangler __SEO_TOPIC_PATH__-bootstrapen — deploy appversjonen med SEO-støtte (v1.4.1+) først.');
   }
   if (!template.includes('__SEO_TABLE_ID__')) {
-    throw new Error('Deployet index.html mangler __SEO_TABLE_ID__-bootstrapen — deploy appversjonen med tabellside-støtte (v1.5.0+) først.');
+    throw new Error('Deployet index.html mangler __SEO_TABLE_ID__-bootstrapen — deploy appversjonen med tabellside-støtte (v1.4.4+) først.');
   }
   return template;
 }
