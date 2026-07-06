@@ -6,7 +6,7 @@ umodifiserte responskroppen** fra
     GET {apiBaseUrl}/tables/{id}/metadata?lang=no
 
 (JSON-Stat2-dataset, UTF-8 uten BOM, ingen innpakking/konvolutt). Filene
-lastes ned av et eget oppdaterings-script og leses av
+lastes ned av `scripts/update-table-metadata.mjs` og leses av
 `scripts/generate-seo-pages.mjs`, som beriker de statiske `/table/{id}/`-sidene
 med notater, verdilabels, enheter og Klass-/VarDok-lenker. Tabeller uten
 gyldig fil får sider bygget fra `/tables`-listen alene (fallback) — en
