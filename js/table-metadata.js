@@ -65,12 +65,14 @@ function convertMarkdownLinks(text) {
 
 /**
  * Build the collapsible metadata section HTML
+ * @param {Object} [metadata] - JSON-Stat2 metadata; defaults to currentFullMetadata
+ *                              (table-display) so existing callers are unchanged
  * @returns {string} - HTML string
  */
-function buildMetadataSection() {
-  if (!currentFullMetadata) return '';
-
-  const meta = currentFullMetadata;
+function buildMetadataSection(metadata) {
+  const meta = metadata
+    || (typeof currentFullMetadata !== 'undefined' ? currentFullMetadata : null);
+  if (!meta) return '';
 
   // Format updated date
   let updatedStr = '';
@@ -176,4 +178,34 @@ function buildMetadataSection() {
       </div>
     </div>
   `;
+}
+
+/**
+ * Wire up expand/collapse (click + Enter/Space) for a metadata section
+ * rendered by buildMetadataSection(). Used by both the table-display and
+ * variable-select views.
+ * @param {HTMLElement} container - Element containing the .table-metadata markup
+ */
+function setupMetadataToggle(container) {
+  const metaToggle = container?.querySelector('.metadata-toggle-btn');
+  if (!metaToggle) return;
+  metaToggle.addEventListener('click', () => {
+    const content = container.querySelector('.metadata-content');
+    const icon = metaToggle.querySelector('.metadata-toggle-icon');
+    if (content.style.display === 'none') {
+      content.style.display = 'block';
+      icon.innerHTML = '&#9660;';
+      metaToggle.setAttribute('aria-expanded', 'true');
+    } else {
+      content.style.display = 'none';
+      icon.innerHTML = '&#9654;';
+      metaToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+  metaToggle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      metaToggle.click();
+    }
+  });
 }

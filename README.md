@@ -82,6 +82,13 @@ Bruk `--dry-run` for å se hva som ville blitt skrevet. Scriptet sletter kun fil
 har generert (sporet i `{webroot}/.seo-manifest.json`), og avbryter uten å røre webroot
 ved API-feil. De genererte filene skal ikke sjekkes inn i git.
 
+Tabellsidene berikes med innhold fra lokale metadatafiler i `data/table-metadata/{id}.json`
+(eksakte responser fra `/tables/{id}/metadata`, lastes ned av et eget oppdaterings-script —
+se `data/table-metadata/README.md` for kontrakten; katalogen overstyres med `--metadata-dir`).
+Tabeller uten gyldig fil får samme innhold som før fra `/tables`-listen alene. Siden
+metadatafilene kan være gamle, hentes tidsperiode og oppdatert-dato alltid fra den ferske
+`/tables`-listen.
+
 ## Systemkrav
 - Moderne nettleser (Chrome, Firefox, Safari, Edge, Vivaldi)
 - JavaScript aktivert

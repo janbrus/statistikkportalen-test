@@ -92,6 +92,8 @@ async function renderVariableSelection(container) {
         </button>
       </div>
 
+      <div id="table-info-container"></div>
+
       <div id="variables-container" class="variables-container">
         <p class="loading-message">${t('loading.metadata')}</p>
       </div>
@@ -312,6 +314,16 @@ async function loadTableMetadata(tableId) {
     if (h2) h2.textContent = extractTableTitle(data.label);
     const bc = document.querySelector('.breadcrumb-current');
     if (bc) bc.textContent = AppState.selectedTable.id + ' ' + extractTableTitle(data.label);
+  }
+
+  // Tabellinfo (notater, kilde, kontakt, Klass-lenker) — samme kollapsbare
+  // seksjon som på tabellvisningen. Viktig også for crawlere: de pre-rendrede
+  // /table/{id}/-sidene erstattes av denne visningen når appen booter, og
+  // uten denne seksjonen ville beskrivelsen forsvinne fra Googlebots snapshot.
+  const infoContainer = document.getElementById('table-info-container');
+  if (infoContainer && typeof buildMetadataSection === 'function') {
+    infoContainer.innerHTML = buildMetadataSection(data);
+    setupMetadataToggle(infoContainer);
   }
 
   // Reset codelist state for new table

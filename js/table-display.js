@@ -262,28 +262,7 @@ function displayData() {
   });
 
   // Set up metadata toggle
-  const metaToggle = container.querySelector('.metadata-toggle-btn');
-  if (metaToggle) {
-    metaToggle.addEventListener('click', () => {
-      const content = container.querySelector('.metadata-content');
-      const icon = metaToggle.querySelector('.metadata-toggle-icon');
-      if (content.style.display === 'none') {
-        content.style.display = 'block';
-        icon.innerHTML = '&#9660;';
-        metaToggle.setAttribute('aria-expanded', 'true');
-      } else {
-        content.style.display = 'none';
-        icon.innerHTML = '&#9654;';
-        metaToggle.setAttribute('aria-expanded', 'false');
-      }
-    });
-    metaToggle.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        metaToggle.click();
-      }
-    });
-  }
+  setupMetadataToggle(container);
 
   // Update cell count
   updateCellCount();

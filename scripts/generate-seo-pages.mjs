@@ -18,6 +18,14 @@
  * /#variables/{id}. hreflang genereres ikke (engelsk finnes kun som
  * klientside-språkbytte, ikke som egne URL-er).
  *
+ * Tabellsider berikes med innhold fra lokale metadatafiler i
+ * data/table-metadata/{id}.json — eksakte responser fra /tables/{id}/metadata,
+ * lastet ned av et eget oppdaterings-script (katalog overstyres med
+ * --metadata-dir, kontrakt i data/table-metadata/README.md). Tabeller uten
+ * gyldig fil får nøyaktig samme innhold som før fra /tables-listen alene.
+ * Metadatafilene kan være gamle: tidsperiode og oppdatert-dato hentes derfor
+ * ALLTID fra den ferske /tables-listen, aldri fra metadatafilen.
+ *
  * Sidedybden speiler appen (topic-view.js): nivåer t.o.m. AppConfig.ui
  * .topicCardDepth får egne sider med lenker til undersidene, mens første nivå
  * under kortene blir én samlet oversiktsside med hele undertreet som
@@ -72,23 +80,28 @@ const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { webroot: null, site: null, dryRun: false, minTables: MIN_TABLE_COUNT };
+  const args = {
+    webroot: null, site: null, dryRun: false, minTables: MIN_TABLE_COUNT,
+    metadataDir: path.join(REPO_ROOT, 'data', 'table-metadata'),
+  };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--webroot') args.webroot = argv[++i];
     else if (a === '--site') args.site = argv[++i];
     else if (a === '--min-tables') args.minTables = parseInt(argv[++i], 10);
+    else if (a === '--metadata-dir') args.metadataDir = argv[++i];
     else if (a === '--dry-run') args.dryRun = true;
     else {
       console.error(`Ukjent argument: ${a}`);
       process.exit(2);
     }
   }
-  if (!args.webroot || !args.site || !Number.isFinite(args.minTables)) {
-    console.error('Bruk: node scripts/generate-seo-pages.mjs --webroot <sti> --site <https://...> [--min-tables <antall>] [--dry-run]');
+  if (!args.webroot || !args.site || !Number.isFinite(args.minTables) || !args.metadataDir) {
+    console.error('Bruk: node scripts/generate-seo-pages.mjs --webroot <sti> --site <https://...> [--metadata-dir <sti>] [--min-tables <antall>] [--dry-run]');
     process.exit(2);
   }
   args.webroot = path.resolve(args.webroot);
+  args.metadataDir = path.resolve(args.metadataDir);
   args.site = args.site.replace(/\/+$/, '');
   return args;
 }
@@ -536,12 +549,18 @@ function buildDescription(page, appConfig) {
   return desc;
 }
 
-function buildTableDescription(t, appConfig) {
+function buildTableDescription(t, appConfig, meta = null) {
   const sourceName = appConfig.source.nameFull || appConfig.source.name;
   const periodPart = t.firstPeriod && t.lastPeriod
     ? ` med tall for perioden ${t.firstPeriod}–${t.lastPeriod}` : '';
   let desc = `${t.discontinued ? 'Avsluttet statistikktabell' : 'Statistikktabell'} ${t.id} fra ${sourceName}${periodPart}.`;
-  const names = Array.isArray(t.variableNames) ? t.variableNames : [];
+  const names = Array.isArray(t.variableNames) ? [...t.variableNames] : [];
+  if (meta) {
+    // Statistikkvariabelens verdilabels bak variabelnavnene — fitList kutter mot budsjettet
+    for (const label of contentsValueLabels(meta)) {
+      if (!names.includes(label)) names.push(label);
+    }
+  }
   const varPart = fitList(names, MAX_DESCRIPTION_LENGTH - desc.length - ' Variabler: .'.length);
   if (varPart) desc += ` Variabler: ${varPart}.`;
   return desc;
@@ -790,6 +809,96 @@ function matchContentDiv(html) {
 }
 
 // ---------------------------------------------------------------------------
+// Lokale tabellmetadata (data/table-metadata/{id}.json)
+//
+// Et eget oppdaterings-script laster ned eksakte responser fra
+// GET /tables/{id}/metadata?lang=no (JSON-Stat2) til katalogen — se
+// data/table-metadata/README.md for kontrakten. Generatoren leser filene
+// per tabellside (lazy, aldri alle i minnet) og skriver aldri i katalogen.
+// ---------------------------------------------------------------------------
+
+/** Les og valider en lokal metadatafil; null (med warn ved korrupt fil) gir fallback. */
+function loadLocalMetadata(metadataDir, id) {
+  const filePath = path.join(metadataDir, `${id}.json`);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const meta = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!meta || typeof meta !== 'object' || !meta.dimension || !meta.label) {
+      console.warn(`[SEO] Metadatafilen for ${id} mangler dimension/label — bruker fallback.`);
+      return null;
+    }
+    return meta;
+  } catch (err) {
+    console.warn(`[SEO] Klarte ikke å lese metadatafilen for ${id} (${err.message}) — bruker fallback.`);
+    return null;
+  }
+}
+
+/** Fjern SSBs «¬»-hierarkimarkører fra en verdilabel (duplikat av
+ *  parseHierarchyLabel i js/variable-select-render.js — endres regelen der,
+ *  må den oppdateres her også). */
+function stripHierarchyPrefix(label) {
+  return String(label || '').replace(/^¬+\s*/, '');
+}
+
+/** Notat → HTML: escape først, deretter markdown-lenker [tekst](url) → <a>
+ *  (duplikat av convertMarkdownLinks i js/table-metadata.js). */
+function noteHtml(note) {
+  return escapeHtml(note).replace(
+    /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+    '<a href="$2" rel="noopener noreferrer">$1</a>'
+  );
+}
+
+/** Notat → ren tekst for JSON-LD: markdown-lenker reduseres til lenketeksten. */
+function noteText(note) {
+  return String(note || '').replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1');
+}
+
+/** Klass-/VarDok-URN → nettleservennlig URL (duplikat av _urnToUrl i
+ *  js/table-metadata.js, alltid norsk utgave). */
+function urnToUrl(href) {
+  if (!href) return null;
+  if (String(href).startsWith('http')) return href;
+  const klass = String(href).match(/^urn:ssb:classification:klass:(\d+)$/);
+  if (klass) return `https://www.ssb.no/klass/klassifikasjoner/${klass[1]}`;
+  const vardok = String(href).match(/^urn:ssb:conceptvariable:vardok:(\d+)$/);
+  if (vardok) return `https://www.ssb.no/a/metadata/conceptvariable/vardok/${vardok[1]}/nb`;
+  return null;
+}
+
+/** Verdikodene i en JSON-Stat2-category i definert rekkefølge
+ *  (category.index kan være array eller {kode: posisjon}-objekt). */
+function orderedCodes(category) {
+  const index = category?.index;
+  if (Array.isArray(index)) return index;
+  if (index && typeof index === 'object') {
+    return Object.keys(index).sort((a, b) => index[a] - index[b]);
+  }
+  return Object.keys(category?.label || {});
+}
+
+/** Dimensjonskodene i metadataenes egen rekkefølge. */
+function dimensionCodes(meta) {
+  return Array.isArray(meta.id) ? meta.id : Object.keys(meta.dimension || {});
+}
+
+/** Verdilabels for statistikkvariabelen (ContentsCode) — de mest søkbare
+ *  termene, brukt i meta description og JSON-LD keywords. */
+function contentsValueLabels(meta) {
+  const metric = new Set(meta.role?.metric || []);
+  const out = [];
+  for (const code of dimensionCodes(meta)) {
+    if (!metric.has(code) && code !== 'ContentsCode') continue;
+    const dim = meta.dimension?.[code];
+    for (const vc of orderedCodes(dim?.category)) {
+      out.push(stripHierarchyPrefix(dim.category?.label?.[vc] ?? vc));
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Tabellsider (/table/{id}/): Dataset-enes kanoniske landingssider
 // ---------------------------------------------------------------------------
 
@@ -819,7 +928,7 @@ function buildTableEntries(tables, pages) {
   return [...entries.values()];
 }
 
-function buildTableContentHtml(entry, appConfig) {
+function buildTableContentHtml(entry, appConfig, meta = null) {
   const t = entry.table;
   const label = cleanLabel(t.label);
   const src = appConfig.source;
@@ -837,18 +946,21 @@ function buildTableContentHtml(entry, appConfig) {
   parts.push(`<nav class="breadcrumbs" aria-label="Brodsmulesti">${crumbs.join('<span class="breadcrumb-sep">/</span>')}</nav>`);
 
   parts.push(`<h1>${escapeHtml(label)}</h1>`);
-  parts.push(`<p>${escapeHtml(buildTableDescription(t, appConfig))}</p>`);
+  parts.push(`<p>${escapeHtml(buildTableDescription(t, appConfig, meta))}</p>`);
 
-  const meta = [`Tabell-ID: ${escapeHtml(t.id)}`];
-  if (t.discontinued) meta.push('Status: Avsluttet — tabellen oppdateres ikke lenger, men tallene er fortsatt tilgjengelige');
-  if (t.firstPeriod && t.lastPeriod) meta.push(`Tidsperiode: ${escapeHtml(t.firstPeriod)}–${escapeHtml(t.lastPeriod)}`);
-  if (isoDate(t.updated)) meta.push(`Sist oppdatert: ${escapeHtml(formatDateNo(t.updated))}`);
+  // Faktaliste — tidsperiode og oppdatert-dato alltid fra den ferske /tables-oppføringen
+  const facts = [`Tabell-ID: ${escapeHtml(t.id)}`];
+  if (t.discontinued) facts.push('Status: Avsluttet — tabellen oppdateres ikke lenger, men tallene er fortsatt tilgjengelige');
+  if (t.firstPeriod && t.lastPeriod) facts.push(`Tidsperiode: ${escapeHtml(t.firstPeriod)}–${escapeHtml(t.lastPeriod)}`);
+  if (isoDate(t.updated)) facts.push(`Sist oppdatert: ${escapeHtml(formatDateNo(t.updated))}`);
   const license = src.licenseUrl
     ? ` (<a href="${escapeAttr(src.licenseUrl)}" rel="noopener noreferrer">${escapeHtml(src.licenseName || 'lisens')}</a>)` : '';
-  meta.push(`Kilde: <a href="${escapeAttr(src.url)}" rel="noopener noreferrer">${escapeHtml(src.nameFull || src.name)}</a>${license}`);
-  parts.push(`<ul>${meta.map(m => `<li>${m}</li>`).join('\n')}</ul>`);
+  facts.push(`Kilde: <a href="${escapeAttr(src.url)}" rel="noopener noreferrer">${escapeHtml(src.nameFull || src.name)}</a>${license}`);
+  parts.push(`<ul>${facts.map(m => `<li>${m}</li>`).join('\n')}</ul>`);
 
-  if (Array.isArray(t.variableNames) && t.variableNames.length > 0) {
+  if (meta) {
+    parts.push(...buildEnrichedSections(meta, t));
+  } else if (Array.isArray(t.variableNames) && t.variableNames.length > 0) {
     parts.push('<h2>Variabler i tabellen</h2>');
     parts.push(`<ul>${t.variableNames.map(v => `<li>${escapeHtml(v)}</li>`).join('\n')}</ul>`);
   }
@@ -862,13 +974,162 @@ function buildTableContentHtml(entry, appConfig) {
   return parts.join('\n      ');
 }
 
+/**
+ * Berikede innholdsseksjoner for en tabellside med lokal metadatafil:
+ * notater som prosa, alle verdilabels per dimensjon (statistikkvariabelen
+ * med enheter), Klass-/VarDok-lenker og kontakt. Tidsdimensjonen vises som
+ * range fra den ferske /tables-oppføringen — periodekoder («2024M01» osv.)
+ * har ingen søkeverdi, og metadatafilens perioder kan være gamle.
+ */
+function buildEnrichedSections(meta, t) {
+  const parts = [];
+
+  const notes = (Array.isArray(meta.note) ? meta.note : []).filter(Boolean);
+  if (notes.length > 0) {
+    parts.push('<h2>Om tabellen</h2>');
+    for (const note of notes) parts.push(`<p>${noteHtml(note)}</p>`);
+  }
+
+  const timeDims = new Set(meta.role?.time || []);
+  const metricDims = new Set(meta.role?.metric || []);
+  const dimParts = [];
+  for (const code of dimensionCodes(meta)) {
+    const dim = meta.dimension?.[code];
+    if (!dim) continue;
+    if (timeDims.has(code) || code === 'Tid') {
+      if (t.firstPeriod && t.lastPeriod) {
+        dimParts.push(`<h3>${escapeHtml(dim.label || code)}</h3>`);
+        dimParts.push(`<p>Tall for perioden ${escapeHtml(t.firstPeriod)}–${escapeHtml(t.lastPeriod)}.</p>`);
+      }
+      continue;
+    }
+    const codes = orderedCodes(dim.category);
+    if (codes.length === 0) continue;
+    const isMetric = metricDims.has(code) || code === 'ContentsCode';
+    const items = codes.map(vc => {
+      const label = stripHierarchyPrefix(dim.category?.label?.[vc] ?? vc);
+      const unit = isMetric ? dim.category?.unit?.[vc]?.base : null;
+      return `<li>${escapeHtml(label)}${unit ? ` <small>(${escapeHtml(unit)})</small>` : ''}</li>`;
+    });
+    dimParts.push(`<h3>${escapeHtml(dim.label || code)} <small>(${codes.length} ${codes.length === 1 ? 'verdi' : 'verdier'})</small></h3>`);
+    dimParts.push(`<ul>${items.join('\n')}</ul>`);
+  }
+  if (dimParts.length > 0) {
+    parts.push('<h2>Variabler og verdier</h2>', ...dimParts);
+  }
+
+  // Klass-/VarDok-lenker fra link.describedby (datasett- og dimensjonsnivå),
+  // dedupet på URN. SSB bruker to former: {href, label} og
+  // {extension: {DimKode: "urn:... urn:..."}} (mellomromsseparert URN-liste).
+  const seenHrefs = new Set();
+  const linkItems = [];
+  const addLinks = (entries, dimLabel) => {
+    for (const link of entries || []) {
+      const hrefs = link?.href
+        ? [{ href: link.href, label: link.label }]
+        : Object.values(link?.extension || {})
+            .flatMap(v => String(v).split(/\s+/))
+            .filter(Boolean)
+            .map(href => ({ href }));
+      for (const { href, label } of hrefs) {
+        if (seenHrefs.has(href)) continue;
+        const url = urnToUrl(href);
+        if (!url) continue;
+        seenHrefs.add(href);
+        const klassId = href.match(/klass:(\d+)$/)?.[1];
+        const vardokId = href.match(/vardok:(\d+)$/)?.[1];
+        const text = label
+          || (klassId ? `Klassifikasjon ${klassId} (Klass)` : null)
+          || (vardokId ? `Variabeldefinisjon ${vardokId} (VarDok)` : null)
+          || href;
+        const prefix = dimLabel ? `${escapeHtml(dimLabel)}: ` : '';
+        linkItems.push(`<li>${prefix}<a href="${escapeAttr(url)}" rel="noopener noreferrer">${escapeHtml(text)}</a></li>`);
+      }
+    }
+  };
+  addLinks(meta.link?.describedby, null);
+  for (const dim of Object.values(meta.dimension || {})) addLinks(dim.link?.describedby, dim.label);
+  if (linkItems.length > 0) {
+    parts.push('<h2>Klassifikasjoner og definisjoner</h2>');
+    parts.push(`<ul>${linkItems.join('\n')}</ul>`);
+  }
+
+  const contacts = (meta.extension?.contact || []).filter(c => c && (c.name || c.mail));
+  if (contacts.length > 0) {
+    const contactStr = contacts.map(c => {
+      const bits = [];
+      if (c.name) bits.push(escapeHtml(c.name));
+      if (c.mail) bits.push(`<a href="mailto:${escapeAttr(c.mail)}">${escapeHtml(c.mail)}</a>`);
+      return bits.join(', ');
+    }).join('; ');
+    parts.push(`<p><small>Kontakt hos ${escapeHtml(meta.source || 'kilden')}: ${contactStr}</small></p>`);
+  }
+
+  return parts;
+}
+
+/**
+ * Berik tabellsidens Dataset med innhold fra den lokale metadatafilen.
+ * Brukes KUN på tabellsidene — emnesidenes DataCatalog beholder de slanke
+ * Dataset-ene fra datasetJsonLd(). dateModified/temporalCoverage arves
+ * urørt fra base (ferske /tables-verdier — ferskhetsregelen).
+ */
+function enrichDatasetJsonLd(base, meta, t) {
+  const timeDims = new Set(meta.role?.time || []);
+  const metricDims = new Set(meta.role?.metric || []);
+
+  const MAX_VARIABLES = 30;
+  const variableMeasured = [];
+  for (const code of dimensionCodes(meta)) {
+    const dim = meta.dimension?.[code];
+    if (!dim || timeDims.has(code) || code === 'Tid') continue;
+    if (metricDims.has(code) || code === 'ContentsCode') {
+      // Statistikkvariabelens verdier er de faktisk målte størrelsene — med enhet
+      for (const vc of orderedCodes(dim.category)) {
+        if (variableMeasured.length >= MAX_VARIABLES) break;
+        const unit = dim.category?.unit?.[vc]?.base;
+        variableMeasured.push({
+          '@type': 'PropertyValue',
+          name: stripHierarchyPrefix(dim.category?.label?.[vc] ?? vc),
+          ...(unit ? { unitText: unit } : {}),
+        });
+      }
+    } else if (variableMeasured.length < MAX_VARIABLES) {
+      variableMeasured.push({ '@type': 'PropertyValue', name: dim.label || code });
+    }
+  }
+
+  const noteStr = (Array.isArray(meta.note) ? meta.note : []).filter(Boolean).map(noteText).join(' ');
+  const description = noteStr ? `${base.description} ${noteStr}`.slice(0, 5000) : base.description;
+
+  // Nøkkelord: variabelnavn + dimensjonslabels + statistikkvariabelens verdier.
+  // Aldri verdilabels fra store dimensjoner (kommuner osv.) — de ligger i brødteksten.
+  const MAX_KEYWORDS = 25;
+  const keywords = new Set(Array.isArray(t.variableNames) ? t.variableNames : []);
+  for (const code of dimensionCodes(meta)) {
+    const dim = meta.dimension?.[code];
+    if (dim?.label && !timeDims.has(code) && code !== 'Tid') keywords.add(dim.label);
+  }
+  for (const label of contentsValueLabels(meta)) keywords.add(label);
+
+  return {
+    ...base,
+    description,
+    ...(variableMeasured.length ? { variableMeasured } : {}),
+    ...(keywords.size ? { keywords: [...keywords].slice(0, MAX_KEYWORDS) } : {}),
+    ...(meta.role?.geo?.length ? { spatialCoverage: 'Norge' } : {}),
+  };
+}
+
 /** Dataset (med katalog-kobling) + BreadcrumbList for en tabellside. */
-function buildTableJsonLd(entry, site, appConfig) {
+function buildTableJsonLd(entry, site, appConfig, meta = null) {
   const url = `${site}/table/${entry.id}/`;
   const graph = [];
 
+  let dataset = datasetJsonLd(entry.table, site, appConfig);
+  if (meta) dataset = enrichDatasetJsonLd(dataset, meta, entry.table);
   graph.push({
-    ...datasetJsonLd(entry.table, site, appConfig),
+    ...dataset,
     includedInDataCatalog: { '@type': 'DataCatalog', name: appConfig.app.name, url: `${site}/` },
   });
 
@@ -894,12 +1155,13 @@ function buildTableJsonLd(entry, site, appConfig) {
   return { '@context': 'https://schema.org', '@graph': graph };
 }
 
-/** Som renderPage(), men for en tabellside (samme mal, samme ankere). */
-function renderTablePage(template, entry, site, appConfig) {
+/** Som renderPage(), men for en tabellside (samme mal, samme ankere).
+ *  meta er tabellens lokale metadatafil eller null (fallback til /tables-felter). */
+function renderTablePage(template, entry, site, appConfig, meta = null) {
   const t = entry.table;
   const url = `${site}/table/${entry.id}/`;
   const title = `${cleanLabel(t.label)} – ${appConfig.app.name}`;
-  const description = buildTableDescription(t, appConfig);
+  const description = buildTableDescription(t, appConfig, meta);
 
   let html = template;
 
@@ -918,7 +1180,7 @@ function renderTablePage(template, entry, site, appConfig) {
   // Relative asset-stier → absolutte (sidene ligger under /table/{id}/)
   html = html.replace(/href="css\//g, 'href="/css/').replace(/src="js\//g, 'src="/js/');
 
-  const jsonLd = JSON.stringify(buildTableJsonLd(entry, site, appConfig)).replace(/</g, '\\u003c');
+  const jsonLd = JSON.stringify(buildTableJsonLd(entry, site, appConfig, meta)).replace(/</g, '\\u003c');
   html = mustReplace(
     html,
     /<\/head>/,
@@ -934,7 +1196,7 @@ function renderTablePage(template, entry, site, appConfig) {
   );
 
   matchContentDiv(html);
-  html = html.replace(CONTENT_DIV_RE, `$1\n      ${buildTableContentHtml(entry, appConfig)}\n    $3`);
+  html = html.replace(CONTENT_DIV_RE, `$1\n      ${buildTableContentHtml(entry, appConfig, meta)}\n    $3`);
 
   return html;
 }
@@ -1141,7 +1403,7 @@ function atomicWrite(filePath, content) {
   fs.renameSync(tmp, filePath);
 }
 
-function main_write(webroot, site, appConfig, pages, tableEntries, totalTables, oldManifest, dryRun) {
+function main_write(webroot, site, appConfig, pages, tableEntries, totalTables, oldManifest, dryRun, metadataDir) {
   const newDirs = [...pages.map(p => p.dir), ...tableEntries.map(e => e.dir)].sort();
   const sitemap = buildSitemap(pages, tableEntries, site);
   const seoMap = buildSeoMap(pages, tableEntries, site);
@@ -1160,8 +1422,9 @@ function main_write(webroot, site, appConfig, pages, tableEntries, totalTables, 
 
   if (dryRun) {
     const listCap = 20;
+    const withMetaCount = tableEntries.filter(e => fs.existsSync(path.join(metadataDir, `${e.id}.json`))).length;
     console.log(`\n[SEO] DRY RUN — ingen filer skrives.`);
-    console.log(`[SEO] Ville skrevet forside-innhold i index.html + ${pages.length} emnesider + ${tableEntries.length} tabellsider + sitemap.xml + seo-map.json${robotsOwned ? ' + robots.txt' : ''}.`);
+    console.log(`[SEO] Ville skrevet forside-innhold i index.html + ${pages.length} emnesider + ${tableEntries.length} tabellsider (${withMetaCount} med lokale metadata) + sitemap.xml + seo-map.json${robotsOwned ? ' + robots.txt' : ''}.`);
     for (const d of newDirs.slice(0, listCap)) console.log(`  /${d}/`);
     if (newDirs.length > listCap) console.log(`  … og ${newDirs.length - listCap} til`);
     if (staleDirs.length) {
@@ -1178,6 +1441,16 @@ function main_write(webroot, site, appConfig, pages, tableEntries, totalTables, 
       console.log(`\n[SEO] Eksempel-tabellside (/${tableSample.dir}/):\n`);
       console.log(renderTablePage(template, tableSample, site, appConfig));
     }
+    // I tillegg: første tabell med gyldig lokal metadatafil, som beriket eksempel
+    let enrichedSample = null;
+    for (const entry of tableEntries) {
+      const meta = loadLocalMetadata(metadataDir, entry.id);
+      if (meta) { enrichedSample = { entry, meta }; break; }
+    }
+    if (enrichedSample) {
+      console.log(`\n[SEO] Eksempel på beriket tabellside (/${enrichedSample.entry.dir}/):\n`);
+      console.log(renderTablePage(template, enrichedSample.entry, site, appConfig, enrichedSample.meta));
+    }
     return;
   }
 
@@ -1188,13 +1461,16 @@ function main_write(webroot, site, appConfig, pages, tableEntries, totalTables, 
     fs.mkdirSync(dirPath, { recursive: true });
     atomicWrite(path.join(dirPath, 'index.html'), renderPage(template, page, site, appConfig));
   }
+  let enrichedCount = 0;
   for (const entry of tableEntries) {
+    const meta = loadLocalMetadata(metadataDir, entry.id);
+    if (meta) enrichedCount++;
     const dirPath = path.join(webroot, entry.dir);
     fs.mkdirSync(dirPath, { recursive: true });
-    atomicWrite(path.join(dirPath, 'index.html'), renderTablePage(template, entry, site, appConfig));
+    atomicWrite(path.join(dirPath, 'index.html'), renderTablePage(template, entry, site, appConfig, meta));
   }
   atomicWrite(path.join(webroot, 'index.html'), renderRootPage(template, site, appConfig, pages, totalTables));
-  console.log(`[SEO] Skrev ${pages.length} emnesider + ${tableEntries.length} tabellsider + forside-innhold i index.html.`);
+  console.log(`[SEO] Skrev ${pages.length} emnesider + ${tableEntries.length} tabellsider (${enrichedCount} beriket med lokale metadata) + forside-innhold i index.html.`);
 
   // 2) sitemap + seo-map + robots
   atomicWrite(path.join(webroot, 'sitemap.xml'), sitemap);
@@ -1230,6 +1506,11 @@ async function main() {
   const appConfig = loadAppConfig();
   const subjectConfig = loadSubjectConfig(appConfig);
   console.log(`[SEO] API: ${appConfig.apiBaseUrl} (${appConfig.app.name})`);
+  if (fs.existsSync(args.metadataDir)) {
+    console.log(`[SEO] Lokale tabellmetadata: ${args.metadataDir}`);
+  } else {
+    console.warn(`[SEO] Metadatakatalogen ${args.metadataDir} finnes ikke — alle tabellsider bygges fra /tables-listen alene.`);
+  }
 
   const tables = await fetchAllTables(appConfig, args.minTables);
   const hierarchy = buildHierarchy(tables);
@@ -1240,7 +1521,7 @@ async function main() {
   console.log(`[SEO] Bygde ${pages.length} emnesider + ${tableEntries.length} tabellsider fra ${tables.length} tabeller (kort-dybde ${cardDepth}).`);
 
   const oldManifest = loadManifest(args.webroot);
-  main_write(args.webroot, args.site, appConfig, pages, tableEntries, totalTables, oldManifest, args.dryRun);
+  main_write(args.webroot, args.site, appConfig, pages, tableEntries, totalTables, oldManifest, args.dryRun, args.metadataDir);
 }
 
 main().catch(err => {
